@@ -1,4 +1,4 @@
-//========= Copyright � 1996-2002, Valve LLC, All rights reserved. ============
+//========= Copyright ï¿½ 1996-2002, Valve LLC, All rights reserved. ============
 //
 // Purpose: dll-agnostic routines (no dll dependencies here)
 //
@@ -203,7 +203,7 @@ skipwhite:
 	if (c == s_shared_quote)
 	{
 		data++;
-		while (len < sizeof( s_shared_token ) - 1)
+		while (len < sizeof( s_shared_token ) - 1))
 		{
 			c = *data++;
 			if (c==s_shared_quote || !c)

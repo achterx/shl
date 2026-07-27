@@ -13,11 +13,8 @@
 *
 ****/
 // netadr.h
-#ifndef NETADR_H
-#define NETADR_H
-#ifdef _WIN32
+
 #pragma once
-#endif
 
 // JoshA: Unfortunately netadr_s is passed to clients for connectionless packets.
 // No Valve mod uses them, but custom mods *might*, so not changing the start of this struct layout.
@@ -36,10 +33,8 @@ typedef enum
 
 typedef struct netadr_s
 {
-	netadrtype_t	type;
-	unsigned char	ip[4];
-	unsigned char	ipx[10]; // deprecated
-	unsigned short	port;
+	netadrtype_t type;
+	unsigned char ip[4];
+	unsigned char ipx[10]; // deprecated
+	unsigned short port;
 } netadr_t;
-
-#endif // NETADR_H

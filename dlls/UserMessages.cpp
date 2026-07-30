@@ -65,4 +65,11 @@ void LinkUserMessages()
 	gmsgStatusValue = REG_USER_MSG("StatusValue", 3);
 
 	gmsgWeapons = REG_USER_MSG("Weapons", 8);
+
+	//more shl fuckery
+	gmsgSHLInputLock = REG_USER_MSG("SHLInL", 1);
+	ALERT(at_console, "SHL: registered SHLInL message id %d\n", gmsgSHLInputLock);
+
+	gmsgSHLGroundedCam = REG_USER_MSG("SHLGCam", 1);
+	ALERT(at_console, "SHL: registered SHLGCam message id %d\n", gmsgSHLGroundedCam);
 }

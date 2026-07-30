@@ -90,6 +90,35 @@ cvar_t* r_decals = nullptr;
 void ShutdownInput();
 
 //DECLARE_MESSAGE(m_Logo, Logo)
+bool g_SHLClientInputLocked = false;
+bool g_SHLGroundedCameraActive = false;
+
+int __MsgFunc_SHLInL(const char* pszName, int iSize, void* pbuf)
+{
+	BEGIN_READ(pbuf, iSize);
+
+	g_SHLClientInputLocked = READ_BYTE() != 0;
+
+	ConsolePrint(g_SHLClientInputLocked
+					 ? "SHL: client input locked\n"
+					 : "SHL: client input unlocked\n");
+
+	return 1;
+}
+
+int __MsgFunc_SHLGCam(const char* pszName, int iSize, void* pbuf)
+{
+	BEGIN_READ(pbuf, iSize);
+
+	g_SHLGroundedCameraActive = READ_BYTE() != 0;
+
+	ConsolePrint(g_SHLGroundedCameraActive
+					 ? "SHL: grounded camera active\n"
+					 : "SHL: grounded camera inactive\n");
+
+	return 1;
+}
+
 int __MsgFunc_Logo(const char* pszName, int iSize, void* pbuf)
 {
 	return static_cast<int>(gHUD.MsgFunc_Logo(pszName, iSize, pbuf));
@@ -140,6 +169,11 @@ void __CmdFunc_OpenCommandMenu()
 	{
 		gViewPort->ShowCommandMenu(gViewPort->m_StandardMenu);
 	}
+}
+
+void __CmdFunc_SHLSaveBlock()
+{
+	ConsolePrint("SHL: hl_cdll intercepted save command\n");
 }
 
 // TFC "special" command
@@ -297,6 +331,9 @@ void CHud::Init()
 	HOOK_COMMAND("-commandmenu", CloseCommandMenu);
 	HOOK_COMMAND("ForceCloseCommandMenu", ForceCloseCommandMenu);
 	HOOK_COMMAND("special", InputPlayerSpecial);
+	gEngfuncs.pfnAddCommand("save", __CmdFunc_SHLSaveBlock);
+	gEngfuncs.pfnAddCommand("quick", __CmdFunc_SHLSaveBlock);
+	gEngfuncs.pfnAddCommand("quicksave", __CmdFunc_SHLSaveBlock);
 
 	HOOK_MESSAGE(ValClass);
 	HOOK_MESSAGE(TeamNames);
@@ -309,6 +346,10 @@ void CHud::Init()
 	HOOK_MESSAGE(ScoreInfo);
 	HOOK_MESSAGE(TeamScore);
 	HOOK_MESSAGE(TeamInfo);
+
+	HOOK_MESSAGE(SHLInL);
+	HOOK_MESSAGE(SHLGCam);
+
 
 	HOOK_MESSAGE(Spectator);
 	HOOK_MESSAGE(AllowSpec);

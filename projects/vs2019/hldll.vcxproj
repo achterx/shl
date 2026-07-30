@@ -220,6 +220,17 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\pm_shared\pm_math.cpp" />
     <ClCompile Include="..\..\pm_shared\pm_shared.cpp" />
     <ClCompile Include="..\..\public\interface.cpp" />
+    <ClCompile Include="monster_shl_normal.cpp" />
+    <ClCompile Include="shl_concussion.cpp" />
+    <ClCompile Include="shl_control.cpp" />
+    <ClCompile Include="shl_defs.cpp" />
+    <ClCompile Include="shl_npc_recovery.cpp" />
+    <ClCompile Include="shl_player_state.cpp" />
+    <ClCompile Include="shl_saveguard.cpp" />
+    <ClCompile Include="shl_scene.cpp" />
+    <ClCompile Include="shl_scene_actor.cpp" />
+    <ClCompile Include="shl_scene_profile.cpp" />
+    <ClCompile Include="shl_skill.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\common\beamdef.h" />
@@ -279,6 +290,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="..\..\dlls\schedule.h" />
     <ClInclude Include="..\..\dlls\scripted.h" />
     <ClInclude Include="..\..\dlls\scriptevent.h" />
+    <ClInclude Include="..\..\dlls\shl_skill.h" />
     <ClInclude Include="..\..\dlls\skill.h" />
     <ClInclude Include="..\..\dlls\soundent.h" />
     <ClInclude Include="..\..\dlls\spectator.h" />
@@ -306,6 +318,15 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="..\..\pm_shared\pm_movevars.h" />
     <ClInclude Include="..\..\pm_shared\pm_shared.h" />
     <ClInclude Include="..\..\public\interface.h" />
+    <ClInclude Include="shl_concussion.h" />
+    <ClInclude Include="shl_control.h" />
+    <ClInclude Include="shl_defs.h" />
+    <ClInclude Include="shl_npc_recovery.h" />
+    <ClInclude Include="shl_player_state.h" />
+    <ClInclude Include="shl_saveguard.h" />
+    <ClInclude Include="shl_scene.h" />
+    <ClInclude Include="shl_scene_actor.h" />
+    <ClInclude Include="shl_scene_profile.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

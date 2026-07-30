@@ -41,6 +41,7 @@
 #include "hltv.h"
 #include "UserMessages.h"
 #include "client.h"
+#include "../projects/vs2019/shl_saveguard.h"
 
 // #define DUCKFIX
 
@@ -66,6 +67,21 @@ TYPEDESCRIPTION CBasePlayer::m_playerSaveData[] =
 	{
 		DEFINE_FIELD(CBasePlayer, m_flFlashLightTime, FIELD_TIME),
 		DEFINE_FIELD(CBasePlayer, m_iFlashBattery, FIELD_INTEGER),
+
+		DEFINE_FIELD(CBasePlayer, m_iSHLStateInitialized, FIELD_INTEGER),
+		DEFINE_FIELD(CBasePlayer, m_flSHLHP, FIELD_FLOAT),
+		DEFINE_FIELD(CBasePlayer, m_flSHLStimulation, FIELD_FLOAT),
+		DEFINE_FIELD(CBasePlayer, m_iSHLClimaxCount, FIELD_INTEGER),
+		DEFINE_FIELD(CBasePlayer, m_iSHLDefeatPending, FIELD_INTEGER),
+		DEFINE_FIELD(CBasePlayer, m_iSHLPlayerState, FIELD_INTEGER),
+		DEFINE_FIELD(CBasePlayer, m_flSHLClimaxEndTime, FIELD_TIME),
+		DEFINE_FIELD(CBasePlayer, m_flSHLConcussion, FIELD_FLOAT),
+		DEFINE_FIELD(CBasePlayer, m_flSHLConcussionRecoverTime, FIELD_TIME),
+		DEFINE_FIELD(CBasePlayer, m_flSHLGroundedEndTime, FIELD_TIME),
+	
+		DEFINE_FIELD(CBasePlayer, m_iSHLGroundedCameraActive, FIELD_INTEGER),
+		DEFINE_FIELD(CBasePlayer, m_vecSHLGroundedSavedViewOfs, FIELD_VECTOR),
+		DEFINE_FIELD(CBasePlayer, m_vecSHLGroundedSavedPunchAngle, FIELD_VECTOR),
 
 		DEFINE_FIELD(CBasePlayer, m_afButtonLast, FIELD_INTEGER),
 		DEFINE_FIELD(CBasePlayer, m_afButtonPressed, FIELD_INTEGER),
@@ -3017,6 +3033,9 @@ void CBasePlayer::Spawn()
 	m_flNextChatTime = gpGlobals->time;
 
 	g_pGameRules->PlayerSpawn(this);
+	
+	// SHL: clear unsafe transient scene/save state after player spawn/load cleanup.
+	SHL_OnPlayerLoadCleanup(edict());
 }
 
 

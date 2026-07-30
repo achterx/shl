@@ -18,8 +18,14 @@
 #include "client.h"
 #include "game.h"
 #include "filesystem_utils.h"
+#include "shl_skill.h"
 
 cvar_t displaysoundlist = {"displaysoundlist", "0"};
+cvar_t shl_marker = {"shl_marker", "2025", FCVAR_SERVER};
+
+// shl cvars
+cvar_t shl_adult_content = {"shl_adult_content", "0", FCVAR_SERVER};
+cvar_t shl_scene_debug = {"shl_scene_debug", "1", FCVAR_SERVER};
 
 // multiplayer server rules
 cvar_t fragsleft = {"mp_fragsleft", "0", FCVAR_SERVER | FCVAR_UNLOGGED}; // Don't spam console/log files/users with this changing
@@ -480,8 +486,8 @@ static bool SV_InitServer()
 void GameDLLInit()
 {
 	// Register cvars here:
-	ALERT(at_console, "SHL: custom hl.dll loaded from GameDLLInit\n");
 
+	SHL_RegisterSkillCVars();
 	g_psv_gravity = CVAR_GET_POINTER("sv_gravity");
 	g_psv_aim = CVAR_GET_POINTER("sv_aim");
 	g_psv_allow_autoaim = CVAR_GET_POINTER("sv_allow_autoaim");
@@ -495,6 +501,12 @@ void GameDLLInit()
 		SERVER_COMMAND("quit\n");
 		return;
 	}
+	
+	// shl bullshit
+	ALERT(at_console, "SHL: custom hl.dll loaded from GameDLLInit\n");
+	CVAR_REGISTER(&shl_marker);
+	CVAR_REGISTER(&shl_adult_content);
+	CVAR_REGISTER(&shl_scene_debug);
 
 	CVAR_REGISTER(&displaysoundlist);
 	CVAR_REGISTER(&allow_spectators);
@@ -525,6 +537,7 @@ void GameDLLInit()
 	CVAR_REGISTER(&sv_allowbunnyhopping);
 
 	// REGISTER CVARS FOR SKILL LEVEL STUFF
+	
 	// Agrunt
 	CVAR_REGISTER(&sk_agrunt_health1); // {"sk_agrunt_health1","0"};
 	CVAR_REGISTER(&sk_agrunt_health2); // {"sk_agrunt_health2","0"};

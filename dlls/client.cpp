@@ -47,6 +47,12 @@
 #include "pm_shared.h"
 #include "pm_defs.h"
 #include "UserMessages.h"
+#include "../projects/vs2019/shl_player_state.h"
+#include "../projects/vs2019/shl_saveguard.h"
+#include "shl_skill.h"
+#include "../projects/vs2019/shl_control.h"
+#include "../projects/vs2019/shl_scene.h"
+#include "../projects/vs2019/shl_concussion.h"
 
 DLL_GLOBAL unsigned int g_ulFrameCount;
 
@@ -214,6 +220,10 @@ void ClientPutInServer(edict_t* pEntity)
 
 	pPlayer->pev->iuser1 = 0; // disable any spec modes
 	pPlayer->pev->iuser2 = 0;
+	SHL_InitPlayerState(pEntity);
+	SHL_InitPlayerConcussion(pEntity);
+	SHL_InitSaveGuardForPlayer(pEntity);
+	SHL_OnPlayerLoadCleanup(pEntity);
 }
 
 #include "voice_gamemgr.h"
@@ -503,6 +513,188 @@ called each time a player uses a "cmd" command
 void ClientCommand(edict_t* pEntity)
 {
 	const char* pcmd = CMD_ARGV(0);
+
+	if (SHL_ShouldBlockPlayerInput(pEntity))
+	{
+		if (
+			FStrEq(pcmd, "use") ||
+			FStrEq(pcmd, "drop") ||
+			FStrEq(pcmd, "lastinv") ||
+			FStrEq(pcmd, "invnext") ||
+			FStrEq(pcmd, "invprev") ||
+			FStrEq(pcmd, "slot1") ||
+			FStrEq(pcmd, "slot2") ||
+			FStrEq(pcmd, "slot3") ||
+			FStrEq(pcmd, "slot4") ||
+			FStrEq(pcmd, "slot5") ||
+			FStrEq(pcmd, "slot6") ||
+			FStrEq(pcmd, "slot7") ||
+			FStrEq(pcmd, "slot8") ||
+			FStrEq(pcmd, "slot9") ||
+			FStrEq(pcmd, "slot10") ||
+			!strncmp(pcmd, "weapon_", 7))
+		{
+			if (SHL_DebugEnabled())
+			{
+				ALERT(at_console, "SHL: blocked command during locked input: %s\n", pcmd);
+			}
+
+			return;
+		}
+	}
+
+	if (
+		!stricmp(pcmd, "save") ||
+		!stricmp(pcmd, "quick") ||
+		!stricmp(pcmd, "quicksave") ||
+		!stricmp(pcmd, "autosave"))
+	{
+		if (!SHL_CanSaveNow(pEntity))
+		{
+			ClientPrint(&pEntity->v, HUD_PRINTCONSOLE, "SHL: Cannot save during active SHL state.\n");
+
+			if (SHL_DebugEnabled())
+			{
+				ALERT(
+					at_console,
+					"SHL: blocked save command '%s', unsafe flags=%d\n",
+					pcmd,
+					SHL_GetUnsafeSaveFlags(pEntity));
+			}
+
+			return;
+		}
+	}
+
+	else if (FStrEq(pcmd, "shl_sceneinfo"))
+	{
+		const int sceneType = SHL_GetPlayerSceneType(pEntity);
+
+		ALERT(
+			at_console,
+			"SHL SCENE: active %d | type %s | duration %.2f | elapsed %.2f | remaining %.2f | progress %.2f\n",
+			SHL_IsPlayerInScene(pEntity) ? 1 : 0,
+			SHL_SceneTypeName(sceneType),
+			SHL_GetPlayerSceneDuration(pEntity),
+			SHL_GetPlayerSceneElapsed(pEntity),
+			SHL_GetPlayerSceneRemaining(pEntity),
+			SHL_GetPlayerSceneProgress(pEntity));
+
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_state"))
+	{
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_addconcussion"))
+	{
+		const float amount = atof(CMD_ARGV(1));
+		SHL_AddPlayerConcussion(pEntity, amount);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_setconcussion"))
+	{
+		const float amount = atof(CMD_ARGV(1));
+		SHL_SetPlayerConcussion(pEntity, amount);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_startscene"))
+	{
+		SHL_StartDebugScene(pEntity);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_endscene"))
+	{
+		SHL_EndDebugScene(pEntity);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_setstate"))
+	{
+		const int newState = atoi(CMD_ARGV(1));
+		SHL_SetPlayerState(pEntity, newState);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_resetplayer"))
+	{
+		SHL_ResetPlayerState(pEntity);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_addstim"))
+	{
+		const float amount = atof(CMD_ARGV(1));
+		SHL_AddPlayerStimulation(pEntity, amount);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_setstim"))
+	{
+		const float amount = atof(CMD_ARGV(1));
+		SHL_SetPlayerStimulation(pEntity, amount);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_setshlhp"))
+	{
+		const float amount = atof(CMD_ARGV(1));
+		SHL_SetPlayerSHLHP(pEntity, amount);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_forceclimax"))
+	{
+		SHL_ForcePlayerClimax(pEntity);
+		SHL_DebugPrintPlayerState(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_cansave"))
+	{
+		SHL_DebugPrintSaveGuard(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_setunsafe"))
+	{
+		const int enabled = atoi(CMD_ARGV(1));
+
+		if (enabled != 0)
+		{
+			SHL_SetUnsafeSaveFlag(pEntity, SHL_UNSAFE_DEBUG_TEST);
+		}
+		else
+		{
+			SHL_ClearUnsafeSaveFlag(pEntity, SHL_UNSAFE_DEBUG_TEST);
+		}
+
+		SHL_DebugPrintSaveGuard(pEntity);
+		return;
+	}
+
+	if (!stricmp(pcmd, "shl_clearunsafe"))
+	{
+		SHL_ClearUnsafeSaveFlags(pEntity);
+		SHL_DebugPrintSaveGuard(pEntity);
+		return;
+	}
+
 	const char* pstr;
 
 	// Is the client spawned yet?
@@ -529,14 +721,12 @@ void ClientCommand(edict_t* pEntity)
 	{
 		if (0 != g_psv_cheats->value)
 		{
-			int iszItem = ALLOC_STRING(CMD_ARGV(1)); // Make a copy of the classname
+			int iszItem = ALLOC_STRING(CMD_ARGV(1));
 			player->GiveNamedItem(STRING(iszItem));
 		}
 	}
-
 	else if (FStrEq(pcmd, "drop"))
 	{
-		// player is dropping an item.
 		player->DropPlayerItem((char*)CMD_ARGV(1));
 	}
 	else if (FStrEq(pcmd, "fov"))
@@ -562,22 +752,25 @@ void ClientCommand(edict_t* pEntity)
 	{
 		player->SelectLastItem();
 	}
-	else if (FStrEq(pcmd, "spectate")) // clients wants to become a spectator
+	else if (FStrEq(pcmd, "spectate"))
 	{
-		// always allow proxies to become a spectator
 		if ((pev->flags & FL_PROXY) != 0 || 0 != allow_spectators.value)
 		{
 			edict_t* pentSpawnSpot = g_pGameRules->GetPlayerSpawnSpot(player);
 			player->StartObserver(pev->origin, VARS(pentSpawnSpot)->angles);
 
-			// notify other clients of player switching to spectator mode
-			UTIL_ClientPrintAll(HUD_PRINTNOTIFY, UTIL_VarArgs("%s switched to spectator mode\n",
-													 (!FStringNull(pev->netname) && STRING(pev->netname)[0] != 0) ? STRING(pev->netname) : "unconnected"));
+			UTIL_ClientPrintAll(
+				HUD_PRINTNOTIFY,
+				UTIL_VarArgs(
+					"%s switched to spectator mode\n",
+					(!FStringNull(pev->netname) && STRING(pev->netname)[0] != 0) ? STRING(pev->netname) : "unconnected"));
 		}
 		else
+		{
 			ClientPrint(pev, HUD_PRINTCONSOLE, "Spectator mode is disabled.\n");
+		}
 	}
-	else if (FStrEq(pcmd, "specmode")) // new spectator mode
+	else if (FStrEq(pcmd, "specmode"))
 	{
 		if (player->IsObserver())
 			player->Observer_SetMode(atoi(CMD_ARGV(1)));
@@ -586,33 +779,28 @@ void ClientCommand(edict_t* pEntity)
 	{
 		// just ignore it
 	}
-	else if (FStrEq(pcmd, "follownext")) // follow next player
+	else if (FStrEq(pcmd, "follownext"))
 	{
 		if (player->IsObserver())
 			player->Observer_FindNextPlayer(atoi(CMD_ARGV(1)) != 0);
 	}
 	else if (g_pGameRules->ClientCommand(player, pcmd))
 	{
-		// MenuSelect returns true only if the command is properly handled,  so don't print a warning
+		// handled by game rules
 	}
 	else
 	{
-		// tell the user they entered an unknown command
 		char command[128];
 
-		// check the length of the command (prevents crash)
-		// max total length is 192 ...and we're adding a string below ("Unknown command: %s\n")
 		strncpy(command, pcmd, 127);
 		command[127] = '\0';
-		// First parse the name and remove any %'s
+
 		for (char* pApersand = command; pApersand != NULL && *pApersand != 0; pApersand++)
 		{
-			// Replace it with a space
 			if (*pApersand == '%')
 				*pApersand = ' ';
 		}
 
-		// tell the user they entered an unknown command
 		ClientPrint(&pEntity->v, HUD_PRINTCONSOLE, UTIL_VarArgs("Unknown command: %s\n", command));
 	}
 }
@@ -745,13 +933,17 @@ PlayerPreThink
 Called every frame before physics are run
 ================
 */
+
 void PlayerPreThink(edict_t* pEntity)
 {
-	entvars_t* pev = &pEntity->v;
 	CBasePlayer* pPlayer = (CBasePlayer*)GET_PRIVATE(pEntity);
+
+	SHL_UpdatePlayerControl(pEntity);
 
 	if (pPlayer)
 		pPlayer->PreThink();
+
+	SHL_UpdatePlayerControl(pEntity);
 }
 
 /*
@@ -761,13 +953,20 @@ PlayerPostThink
 Called every frame after physics are run
 ================
 */
+
 void PlayerPostThink(edict_t* pEntity)
 {
-	entvars_t* pev = &pEntity->v;
 	CBasePlayer* pPlayer = (CBasePlayer*)GET_PRIVATE(pEntity);
+
+	SHL_UpdatePlayerControl(pEntity);
 
 	if (pPlayer)
 		pPlayer->PostThink();
+
+	SHL_PlayerThink(pEntity);
+	SHL_PlayerConcussionThink(pEntity);
+
+	SHL_UpdatePlayerControl(pEntity);
 }
 
 
@@ -896,6 +1095,9 @@ void StartFrame()
 
 	gpGlobals->teamplay = teamplay.value;
 	g_ulFrameCount++;
+
+	SHL_SaveGuardThink();
+	SHL_SceneThink();
 
 	const bool allowBunnyHopping = sv_allowbunnyhopping.value != 0;
 
@@ -1915,6 +2117,58 @@ void UpdateClientData(const edict_t* ent, int sendweapons, struct clientdata_s* 
 #endif
 }
 
+static void SHL_FilterLockedUserCommand(const edict_t* player, const usercmd_s* cmd)
+{
+	if (player == nullptr || cmd == nullptr)
+		return;
+
+	edict_t* pMutableEdict = const_cast<edict_t*>(player);
+
+	if (!SHL_ShouldBlockPlayerInput(pMutableEdict))
+		return;
+
+	usercmd_s* pMutableCmd = const_cast<usercmd_s*>(cmd);
+
+	pMutableCmd->forwardmove = 0.0f;
+	pMutableCmd->sidemove = 0.0f;
+	pMutableCmd->upmove = 0.0f;
+
+	pMutableCmd->buttons = 0;
+	pMutableCmd->impulse = 0;
+	pMutableCmd->weaponselect = 0;
+
+	entvars_t* pev = &pMutableEdict->v;
+
+	pev->button = 0;
+	pev->oldbuttons = 0;
+	pev->impulse = 0;
+
+	CBasePlayer* pPlayer = (CBasePlayer*)GET_PRIVATE(pMutableEdict);
+
+	if (pPlayer != nullptr)
+	{
+		pPlayer->m_flNextAttack = gpGlobals->time + 0.25f;
+
+		if (pPlayer->m_pActiveItem != nullptr)
+		{
+			CBasePlayerWeapon* pWeapon = pPlayer->m_pActiveItem->GetWeaponPtr();
+
+			if (pWeapon != nullptr)
+			{
+				pWeapon->m_flNextPrimaryAttack = UTIL_WeaponTimeBase() + 0.25f;
+				pWeapon->m_flNextSecondaryAttack = UTIL_WeaponTimeBase() + 0.25f;
+				pWeapon->m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 0.25f;
+			}
+		}
+	}
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(at_console, "SHL: filtered locked usercmd\n");
+	}
+}
+
+
 /*
 =================
 CmdStart
@@ -2049,5 +2303,29 @@ AllowLagCompensation
 */
 int AllowLagCompensation()
 {
+	return 1;
+}
+
+int FAllowSaveGame()
+{
+	ALERT(at_console, "SHL: FAllowSaveGame was called\n");
+
+	CBaseEntity* pPlayer = UTIL_PlayerByIndex(1);
+
+	if (pPlayer != nullptr && !SHL_CanSaveNow(pPlayer->edict()))
+	{
+		ClientPrint(pPlayer->pev, HUD_PRINTCONSOLE, "SHL: Cannot save during active SHL state.\n");
+
+		if (SHL_DebugEnabled())
+		{
+			ALERT(
+				at_console,
+				"SHL: FAllowSaveGame blocked save, unsafe flags=%d\n",
+				SHL_GetUnsafeSaveFlags(pPlayer->edict()));
+		}
+
+		return 0;
+	}
+
 	return 1;
 }

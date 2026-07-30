@@ -101,6 +101,23 @@ public:
 
 	int random_seed; // See that is shared between client & server for shared weapons code
 
+		// SHL persistent player state.
+	int m_iSHLStateInitialized;
+	float m_flSHLHP;
+	float m_flSHLStimulation;
+	int m_iSHLClimaxCount;
+	int m_iSHLDefeatPending;
+	int m_iSHLPlayerState;
+	float m_flSHLClimaxEndTime;
+
+	// shl concussion shit
+	float m_flSHLConcussion;
+	float m_flSHLConcussionRecoverTime;
+	float m_flSHLGroundedEndTime;
+	int m_iSHLGroundedCameraActive;
+	Vector m_vecSHLGroundedSavedViewOfs;
+	Vector m_vecSHLGroundedSavedPunchAngle;
+
 	int m_iPlayerSound;		// the index of the sound list slot reserved for this player
 	int m_iTargetVolume;	// ideal sound volume.
 	int m_iWeaponVolume;	// how loud the player's weapon is right now.

@@ -40,6 +40,8 @@ int CL_ButtonBits(bool);
 // xxx need client dll function to get and clear impuse
 extern cvar_t* in_joystick;
 
+extern bool g_SHLClientInputLocked;
+
 int in_impulse = 0;
 bool in_cancel = false;
 
@@ -728,6 +730,20 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 	// If they're in a modal dialog, ignore the attack button.
 	if (GetClientVoiceMgr()->IsInSquelchMode())
 		cmd->buttons &= ~IN_ATTACK;
+
+	if (g_SHLClientInputLocked)
+	{
+		cmd->forwardmove = 0.0f;
+		cmd->sidemove = 0.0f;
+		cmd->upmove = 0.0f;
+
+		cmd->buttons = 0;
+		cmd->impulse = 0;
+		cmd->weaponselect = 0;
+
+		in_impulse = 0;
+		g_weaponselect = 0;
+	}
 
 	// Using joystick?
 	if (0 != in_joystick->value)

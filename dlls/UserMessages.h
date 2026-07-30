@@ -55,4 +55,9 @@ inline int gmsgStatusValue = 0;
 
 inline int gmsgWeapons = 0;
 
+//shl bullshit
+
+inline int gmsgSHLInputLock = 0;
+inline int gmsgSHLGroundedCam = 0;
+
 void LinkUserMessages();

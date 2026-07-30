@@ -20,6 +20,7 @@
 #include "hltv.h"
 #include "Exports.h"
 
+extern bool g_SHLGroundedCameraActive;
 int CL_IsThirdPerson();
 void CL_CameraOffset(float* ofs);
 
@@ -417,6 +418,32 @@ void V_CalcViewRoll(struct ref_params_s* pparams)
 		pparams->viewangles[ROLL] = 80; // dead view angle
 		return;
 	}
+}
+
+static void SHL_ApplyGroundedCameraView(struct ref_params_s* pparams)
+{
+	if (!g_SHLGroundedCameraActive)
+		return;
+
+	if (pparams == nullptr)
+		return;
+
+	if (pparams->intermission != 0)
+		return;
+
+	if (pparams->spectator != 0 || g_iUser1 != 0)
+		return;
+
+	// Copy the dead in-eye camera behavior:
+	// V_GetInEyePos uses entity origin + VEC_DEAD_VIEW and roll 80
+	// when the viewed player is dead.
+	VectorCopy(pparams->simorg, pparams->vieworg);
+	VectorAdd(pparams->vieworg, VEC_DEAD_VIEW, pparams->vieworg);
+
+	pparams->viewangles[ROLL] = 80.0f;
+
+	// Keep pitch/yaw from the real player view, but force corpse-style roll.
+	// This gives grounded state the dead-camera feel without calling StartDeathCam().
 }
 
 
@@ -842,7 +869,10 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	lasttime = pparams->time;
 
+	SHL_ApplyGroundedCameraView(pparams);
+
 	v_origin = pparams->vieworg;
+	v_angles = pparams->viewangles;
 }
 
 void V_SmoothInterpolateAngles(float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec)
@@ -1620,8 +1650,8 @@ void V_CalcSpectatorRefdef(struct ref_params_s* pparams)
 
 	// write back new values into pparams
 	VectorCopy(v_cl_angles, pparams->cl_viewangles);
-	VectorCopy(v_angles, pparams->viewangles)
-		VectorCopy(v_origin, pparams->vieworg);
+	VectorCopy(v_angles, pparams->viewangles);
+	VectorCopy(v_origin, pparams->vieworg);
 }
 
 

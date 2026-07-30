@@ -1120,7 +1120,198 @@ void CTriggerOnce::Spawn()
 	CTriggerMultiple::Spawn();
 }
 
+// shl triggers !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+extern cvar_t shl_adult_content;
+extern cvar_t shl_scene_debug;
 
+class CTriggerSHLScene : public CBaseTrigger
+{
+public:
+	void Spawn() override;
+	bool KeyValue(KeyValueData* pkvd) override;
+
+	void EXPORT SceneTouch(CBaseEntity* pOther);
+	void EXPORT SceneUse(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useType, float value);
+	void EXPORT SceneReleaseThink();
+
+private:
+	string_t m_iszDisabledMessage;
+	float m_flSceneTime = 3.0f;
+	bool m_fLockPlayer = true;
+	bool m_fFadeScreen = true;
+	int m_iFadeAlpha = 220;
+	EHANDLE m_hScenePlayer;
+};
+
+LINK_ENTITY_TO_CLASS(trigger_shl_scene, CTriggerSHLScene);
+
+void CTriggerSHLScene::Spawn()
+{
+	InitTrigger();
+
+	if (m_flWait == 0)
+	{
+		m_flWait = -1;
+	}
+
+	SetTouch(&CTriggerSHLScene::SceneTouch);
+	SetUse(&CTriggerSHLScene::SceneUse);
+}
+
+bool CTriggerSHLScene::KeyValue(KeyValueData* pkvd)
+{
+	if (FStrEq(pkvd->szKeyName, "disabledmessage"))
+	{
+		m_iszDisabledMessage = ALLOC_STRING(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "scenetime"))
+	{
+		m_flSceneTime = atof(pkvd->szValue);
+
+		if (m_flSceneTime < 0.1f)
+		{
+			m_flSceneTime = 0.1f;
+		}
+
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "lockplayer"))
+	{
+		m_fLockPlayer = atoi(pkvd->szValue) != 0;
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "fadescreen"))
+	{
+		m_fFadeScreen = atoi(pkvd->szValue) != 0;
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "fadealpha"))
+	{
+		m_iFadeAlpha = atoi(pkvd->szValue);
+
+		if (m_iFadeAlpha < 0)
+		{
+			m_iFadeAlpha = 0;
+		}
+		else if (m_iFadeAlpha > 255)
+		{
+			m_iFadeAlpha = 255;
+		}
+
+		return true;
+	}
+
+	return CBaseTrigger::KeyValue(pkvd);
+}
+
+void CTriggerSHLScene::SceneTouch(CBaseEntity* pOther)
+{
+	if (!pOther || !pOther->IsPlayer())
+	{
+		return;
+	}
+
+	SceneUse(pOther, this, USE_TOGGLE, 0);
+}
+
+void CTriggerSHLScene::SceneUse(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useType, float value)
+{
+	if (!pActivator || !pActivator->IsPlayer())
+	{
+		return;
+	}
+
+	auto pPlayer = static_cast<CBasePlayer*>(pActivator);
+
+	if (shl_adult_content.value == 0)
+	{
+		if (!FStringNull(m_iszDisabledMessage))
+		{
+			UTIL_ShowMessage(STRING(m_iszDisabledMessage), pActivator);
+		}
+		else
+		{
+			UTIL_ShowMessage("Adult content is disabled. Set shl_adult_content 1 to enable this scene.", pActivator);
+		}
+
+		if (shl_scene_debug.value != 0)
+		{
+			ALERT(at_console, "SHL SCENE: blocked because shl_adult_content is 0\n");
+		}
+
+		return;
+	}
+
+	m_hScenePlayer = pPlayer;
+
+	if (!FStringNull(pev->message))
+	{
+		UTIL_ShowMessage(STRING(pev->message), pActivator);
+	}
+	else
+	{
+		UTIL_ShowMessage("SHL scene started.", pActivator);
+	}
+
+	if (m_fFadeScreen)
+	{
+		// 1 = fade out in GoldSrc screen fade flags.
+		UTIL_ScreenFade(pActivator, Vector(0, 0, 0), 0.75f, m_flSceneTime, m_iFadeAlpha, 1);
+	}
+
+	if (m_fLockPlayer)
+	{
+		pPlayer->EnableControl(false);
+	}
+
+	if (shl_scene_debug.value != 0)
+	{
+		ALERT(at_console, "SHL SCENE: scene started, duration %.2f\n", m_flSceneTime);
+	}
+
+	SUB_UseTargets(pActivator, USE_TOGGLE, 0);
+
+	SetThink(&CTriggerSHLScene::SceneReleaseThink);
+	pev->nextthink = gpGlobals->time + m_flSceneTime;
+
+	SetTouch(NULL);
+	SetUse(NULL);
+}
+
+void CTriggerSHLScene::SceneReleaseThink()
+{
+	if (m_hScenePlayer != NULL)
+	{
+		auto pPlayer = static_cast<CBasePlayer*>(static_cast<CBaseEntity*>(m_hScenePlayer));
+
+		if (pPlayer->IsAlive())
+		{
+			pPlayer->EnableControl(true);
+
+			// 0 = fade in.
+			UTIL_ScreenFade(pPlayer, Vector(0, 0, 0), 0.75f, 0.0f, 0, 0);
+		}
+	}
+
+	if (shl_scene_debug.value != 0)
+	{
+		ALERT(at_console, "SHL SCENE: scene released\n");
+	}
+
+	if (m_flWait <= 0)
+	{
+		UTIL_Remove(this);
+	}
+	else
+	{
+		SetTouch(&CTriggerSHLScene::SceneTouch);
+		SetUse(&CTriggerSHLScene::SceneUse);
+		SetThink(NULL);
+	}
+}
+
+// end of shl triggers !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 void CBaseTrigger::MultiTouch(CBaseEntity* pOther)
 {

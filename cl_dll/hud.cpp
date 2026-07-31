@@ -29,6 +29,7 @@
 #include "demo.h"
 #include "demo_api.h"
 #include "vgui_ScorePanel.h"
+#include "../projects/vs2019/shl_client_camera.h"
 
 hud_player_info_t g_PlayerInfoList[MAX_PLAYERS_HUD + 1];	// player info from the engine
 extra_player_info_t g_PlayerExtraInfo[MAX_PLAYERS_HUD + 1]; // additional player info sent directly to the client dll
@@ -91,9 +92,14 @@ void ShutdownInput();
 
 //DECLARE_MESSAGE(m_Logo, Logo)
 bool g_SHLClientInputLocked = false;
-bool g_SHLGroundedCameraActive = false;
 
 DECLARE_MESSAGE(m_SHLEscapeBar, SHLEsc);
+
+int __MsgFunc_SHLCam(const char* pszName, int iSize, void* pbuf)
+{
+	SHL_ClientCameraMessage(pszName, iSize, pbuf);
+	return 1;
+}
 
 int __MsgFunc_SHLInL(const char* pszName, int iSize, void* pbuf)
 {
@@ -104,19 +110,6 @@ int __MsgFunc_SHLInL(const char* pszName, int iSize, void* pbuf)
 	ConsolePrint(g_SHLClientInputLocked
 					 ? "SHL: client input locked\n"
 					 : "SHL: client input unlocked\n");
-
-	return 1;
-}
-
-int __MsgFunc_SHLGCam(const char* pszName, int iSize, void* pbuf)
-{
-	BEGIN_READ(pbuf, iSize);
-
-	g_SHLGroundedCameraActive = READ_BYTE() != 0;
-
-	ConsolePrint(g_SHLGroundedCameraActive
-					 ? "SHL: grounded camera active\n"
-					 : "SHL: grounded camera inactive\n");
 
 	return 1;
 }
@@ -350,8 +343,9 @@ void CHud::Init()
 	HOOK_MESSAGE(TeamInfo);
 
 	HOOK_MESSAGE(SHLInL);
-	HOOK_MESSAGE(SHLGCam);
 	HOOK_MESSAGE(SHLEsc);
+	HOOK_MESSAGE(SHLCam);
+	SHL_ClientCameraInit();
 
 
 	HOOK_MESSAGE(Spectator);
@@ -569,6 +563,7 @@ void CHud::VidInit()
 	m_TextMessage.VidInit();
 	m_StatusIcons.VidInit();
 	m_SHLEscapeBar.VidInit();
+	SHL_ClientCameraVidInit();
 	GetClientVoiceMgr()->VidInit();
 }
 
@@ -758,6 +753,7 @@ bool CHudSHLEscapeBar::Init(void)
 {
 	m_iActive = 0;
 	m_iPercent = 0;
+	m_iFlags = HUD_ACTIVE;
 
 	gHUD.AddHudElem(this);
 
@@ -768,6 +764,7 @@ bool CHudSHLEscapeBar::VidInit(void)
 {
 	m_iActive = 0;
 	m_iPercent = 0;
+	m_iFlags = HUD_ACTIVE;
 
 	return true;
 }
@@ -813,7 +810,7 @@ bool CHudSHLEscapeBar::Draw(float flTime)
 		x,
 		y - 18,
 		x + barWidth,
-		"ESCAPE",
+		"",
 		120,
 		220,
 		255);

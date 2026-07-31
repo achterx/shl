@@ -74,4 +74,6 @@ void LinkUserMessages()
 	ALERT(at_console, "SHL: registered SHLGCam message id %d\n", gmsgSHLGroundedCam);
 
 	gmsgSHLEscapeBar = REG_USER_MSG("SHLEsc", 2);
+
+	gmsgSHLCamera = REG_USER_MSG("SHLCam", 5);
 }

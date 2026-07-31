@@ -221,6 +221,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\pm_shared\pm_shared.cpp" />
     <ClCompile Include="..\..\public\interface.cpp" />
     <ClCompile Include="monster_shl_normal.cpp" />
+    <ClCompile Include="shl_camera.cpp" />
     <ClCompile Include="shl_concussion.cpp" />
     <ClCompile Include="shl_control.cpp" />
     <ClCompile Include="shl_defs.cpp" />
@@ -318,6 +319,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="..\..\pm_shared\pm_movevars.h" />
     <ClInclude Include="..\..\pm_shared\pm_shared.h" />
     <ClInclude Include="..\..\public\interface.h" />
+    <ClInclude Include="shl_camera.h" />
     <ClInclude Include="shl_concussion.h" />
     <ClInclude Include="shl_control.h" />
     <ClInclude Include="shl_defs.h" />

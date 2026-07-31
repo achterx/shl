@@ -26,6 +26,8 @@ float SHL_NormalNpcEnduranceMax();
 float SHL_NormalNpcEnduranceDrainPerSecond();
 float SHL_NormalNpcEnduranceDrainPerPlayerClimax();
 float SHL_NormalNpcClimaxDuration();
+float SHL_NormalEscapeRecoveryDuration();
+float SHL_NormalRegrabCooldown();
 
 // player skills
 extern cvar_t sk_shl_player_shl_hp_max;

@@ -358,6 +358,8 @@ void KeyUp(kbutton_t* b)
 	b->state |= 4;	// impulse up
 }
 
+static void SHL_ClientSendEscapeMash();
+
 /*
 ============
 HUD_Key_Event
@@ -367,7 +369,13 @@ Return 1 to allow engine to process the key, otherwise, act on it as needed
 */
 int DLLEXPORT HUD_Key_Event(int down, int keynum, const char* pszCurrentBinding)
 {
-	//	RecClKeyEvent(down, keynum, pszCurrentBinding);
+	if (down && g_SHLClientInputLocked && pszCurrentBinding != nullptr)
+	{
+		if (!stricmp(pszCurrentBinding, "lastinv"))
+		{
+			SHL_ClientSendEscapeMash();
+		}
+	}
 
 	if (gViewPort)
 		return static_cast<int>(gViewPort->KeyInput(0 != down, keynum, pszCurrentBinding));
@@ -653,9 +661,23 @@ if active == 1 then we are 1) not playing back demos ( where our commands are ig
 */
 static float g_flSHLNextEscapeSendTime = 0.0f;
 
+static bool g_bSHLWasEscapeForwardDown = false;
+static bool g_bSHLWasEscapeBackDown = false;
+static bool g_bSHLWasEscapeMoveLeftDown = false;
+static bool g_bSHLWasEscapeMoveRightDown = false;
+static bool g_bSHLWasEscapeUseDown = false;
+static bool g_bSHLWasEscapeReloadDown = false;
+static bool g_bSHLWasEscapeJumpDown = false;
+
 static void SHL_ClientSendEscapeMash()
 {
 	const float now = gEngfuncs.GetClientTime();
+
+	// Map restart/changelevel can reset client time while this static remains from the old map.
+	if (g_flSHLNextEscapeSendTime > now + 1.0f)
+	{
+		g_flSHLNextEscapeSendTime = 0.0f;
+	}
 
 	if (now < g_flSHLNextEscapeSendTime)
 		return;
@@ -665,41 +687,60 @@ static void SHL_ClientSendEscapeMash()
 	gEngfuncs.pfnServerCmd("shl_escape\n");
 }
 
-static void SHL_ClientCheckEscapeMashFromCmd(usercmd_t* cmd)
+static bool SHL_ClientButtonPressedThisFrame(bool isDown, bool& wasDown)
 {
-	if (cmd == nullptr)
-		return;
+	const bool pressed = isDown && !wasDown;
 
-	if (cmd->forwardmove != 0.0f)
+	wasDown = isDown;
+
+	return pressed;
+}
+
+static void SHL_ClientCheckEscapeMashFromButtons(bool allowSend)
+{
+	bool pressed = false;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_forward.state & 1) != 0,
+				  g_bSHLWasEscapeForwardDown) ||
+			  pressed;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_back.state & 1) != 0,
+				  g_bSHLWasEscapeBackDown) ||
+			  pressed;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_moveleft.state & 1) != 0,
+				  g_bSHLWasEscapeMoveLeftDown) ||
+			  pressed;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_moveright.state & 1) != 0,
+				  g_bSHLWasEscapeMoveRightDown) ||
+			  pressed;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_use.state & 1) != 0,
+				  g_bSHLWasEscapeUseDown) ||
+			  pressed;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_reload.state & 1) != 0,
+				  g_bSHLWasEscapeReloadDown) ||
+			  pressed;
+
+	pressed = SHL_ClientButtonPressedThisFrame(
+				  (in_jump.state & 1) != 0,
+				  g_bSHLWasEscapeJumpDown) ||
+			  pressed;
+
+	if (allowSend && pressed)
 	{
 		SHL_ClientSendEscapeMash();
-		return;
-	}
-
-	if (cmd->sidemove != 0.0f)
-	{
-		SHL_ClientSendEscapeMash();
-		return;
-	}
-
-	if (cmd->buttons & IN_USE)
-	{
-		SHL_ClientSendEscapeMash();
-		return;
-	}
-
-	if (cmd->buttons & IN_RELOAD)
-	{
-		SHL_ClientSendEscapeMash();
-		return;
-	}
-
-	if (cmd->buttons & IN_JUMP)
-	{
-		SHL_ClientSendEscapeMash();
-		return;
 	}
 }
+
 void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 {
 	//	RecClCL_CreateMove(frametime, cmd, active);
@@ -780,9 +821,10 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 	if (GetClientVoiceMgr()->IsInSquelchMode())
 		cmd->buttons &= ~IN_ATTACK;
 
+	SHL_ClientCheckEscapeMashFromButtons(g_SHLClientInputLocked);
+
 	if (g_SHLClientInputLocked)
 	{
-		SHL_ClientCheckEscapeMashFromCmd(cmd);
 		cmd->forwardmove = 0.0f;
 		cmd->sidemove = 0.0f;
 		cmd->upmove = 0.0f;

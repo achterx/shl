@@ -60,5 +60,6 @@ inline int gmsgWeapons = 0;
 inline int gmsgSHLInputLock = 0;
 inline int gmsgSHLGroundedCam = 0;
 inline int gmsgSHLEscapeBar = 0;
+inline int gmsgSHLCamera = 0;
 
 void LinkUserMessages();

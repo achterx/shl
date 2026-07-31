@@ -81,6 +81,18 @@ cvar_t sk_shl_normal_npc_recovery_duration =
 		"sk_shl_normal_npc_recovery_duration",
 		"3.0",
 		FCVAR_SERVER};
+
+cvar_t sk_shl_normal_escape_recovery_duration =
+	{
+		"sk_shl_normal_escape_recovery_duration",
+		"1.5",
+		FCVAR_SERVER};
+
+cvar_t sk_shl_normal_regrab_cooldown =
+	{
+		"sk_shl_normal_regrab_cooldown",
+		"2.0",
+		FCVAR_SERVER};
 // ----------------------------------------------------
 cvar_t sk_shl_player_shl_hp_max =
 	{
@@ -143,6 +155,16 @@ float SHL_NormalNpcRecoveryDuration()
 	return sk_shl_normal_npc_recovery_duration.value;
 }
 
+float SHL_NormalEscapeRecoveryDuration()
+{
+	return sk_shl_normal_escape_recovery_duration.value;
+}
+
+float SHL_NormalRegrabCooldown()
+{
+	return sk_shl_normal_regrab_cooldown.value;
+}
+
 cvar_t sk_shl_player_concussion_max = {"sk_shl_player_concussion_max", "100"};
 cvar_t sk_shl_player_concussion_recover_rate = {"sk_shl_player_concussion_recover_rate", "8"};
 cvar_t sk_shl_player_concussion_grounded_duration = {"sk_shl_player_concussion_grounded_duration", "4"};
@@ -174,6 +196,8 @@ void SHL_RegisterSkillCVars()
 	CVAR_REGISTER(&sk_shl_normal_grounded_stop_range);
 	CVAR_REGISTER(&sk_shl_normal_grounded_grab_delay);
 	CVAR_REGISTER(&sk_shl_normal_grounded_grab_duration);
+	CVAR_REGISTER(&sk_shl_normal_escape_recovery_duration);
+	CVAR_REGISTER(&sk_shl_normal_regrab_cooldown);
 
 	CVAR_REGISTER(&sk_shl_player_shl_hp_max);
 	CVAR_REGISTER(&sk_shl_player_stim_max);

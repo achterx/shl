@@ -15,7 +15,6 @@ static const shl_scene_profile_t g_SHLSceneProfileNone =
 		false,
 		false,
 		false,
-
 		false,
 
 		0.0f,
@@ -30,6 +29,11 @@ static const shl_scene_profile_t g_SHLSceneProfileNone =
 		nullptr,
 		nullptr,
 		nullptr,
+
+		nullptr,
+		nullptr,
+		0.0f,
+		0.0f,
 
 		0.0f,
 
@@ -50,7 +54,6 @@ static const shl_scene_profile_t g_SHLSceneProfileDebug =
 		true,
 		true,
 		false,
-
 		true,
 
 		0.0f,
@@ -65,6 +68,11 @@ static const shl_scene_profile_t g_SHLSceneProfileDebug =
 		nullptr,
 		nullptr,
 		nullptr,
+
+		nullptr,
+		nullptr,
+		0.0f,
+		0.0f,
 
 		0.0f,
 
@@ -85,7 +93,6 @@ static const shl_scene_profile_t g_SHLSceneProfileGroundedGrab =
 		true,
 		true,
 		true,
-
 		true,
 
 		6.0f,
@@ -101,15 +108,22 @@ static const shl_scene_profile_t g_SHLSceneProfileGroundedGrab =
 		"shl_grab_climax",
 		"shl_npc_climax",
 
+		
+
+		"shl_escape_knockdown",
+		"shl_recovery_getup",
+		4.31f,
+		1.60f,
+
 		0.8f,
 
 		// GROUNDED_GRAB should not end just because the old timer expires.
 		false,
 
-		// Escape settings. Actual mashing code comes later.
+		// Escape settings.
 		true,
-		100.0f,
-		8.0f,
+		160.0f,
+		6.0f,
 
 		// After player climax animation, wait this long before returning to grab loop.
 		1.0f};

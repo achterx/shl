@@ -188,6 +188,11 @@ void CMonsterSHLNormal::TryStartGroundedGrab()
 		ALERT(at_console, "SHL Normal: trying grounded grab scene\n");
 	}
 
+	if (SHL_IsMonsterGrabBlocked(this))
+	{
+		return;
+	}
+
 	SHL_TryStartGroundedGrabScene(
 		this,
 		pEnemy->edict(),
@@ -218,8 +223,7 @@ void CMonsterSHLNormal::PrescheduleThink()
 		pev->velocity = g_vecZero;
 		pev->avelocity = g_vecZero;
 
-		// Do not request IDLE_STAND while scene owns animation.
-		// Returning base schedule can briefly force ACT_IDLE/stand.
+		// Do not return here. Returning causes scene animation flicker.
 	}
 
 	CBaseMonster::PrescheduleThink();
@@ -262,13 +266,10 @@ void CMonsterSHLNormal::PrescheduleThink()
 
 bool CMonsterSHLNormal::CheckMeleeAttack1(float flDot, float flDist)
 {
-	if (SHL_IsMonsterInSceneNpcRecovery(this))
+	if (SHL_IsMonsterActionLocked(this))
 		return false;
 	
 	if (SHL_IsNpcRecovering(this))
-		return false;
-	
-	if (SHL_IsMonsterSceneOwner(this))
 		return false;
 
 	if (IsEnemyInNoMeleeState())
@@ -351,7 +352,7 @@ Schedule_t* CMonsterSHLNormal::GetSchedule()
 
 void CMonsterSHLNormal::HandleAnimEvent(MonsterEvent_t* pEvent)
 {
-	if (SHL_IsMonsterInSceneNpcRecovery(this))
+	if (SHL_IsMonsterActionLocked(this))
 		return;
 	
 	switch (pEvent->event)

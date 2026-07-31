@@ -402,6 +402,9 @@
     <ClCompile Include="shl_npc_recovery.cpp">
       <Filter>Source Files\dlls</Filter>
     </ClCompile>
+    <ClCompile Include="shl_camera.cpp">
+      <Filter>Source Files\dlls</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dlls\doors.h">
@@ -685,6 +688,9 @@
     </ClInclude>
     <ClInclude Include="shl_npc_recovery.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shl_camera.h">
+      <Filter>Header Files\dlls</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -20,7 +20,7 @@
 #include "hltv.h"
 #include "Exports.h"
 
-extern bool g_SHLGroundedCameraActive;
+#include "../projects/vs2019/shl_client_camera.h"
 int CL_IsThirdPerson();
 void CL_CameraOffset(float* ofs);
 
@@ -422,8 +422,7 @@ void V_CalcViewRoll(struct ref_params_s* pparams)
 
 static void SHL_ApplyGroundedCameraView(struct ref_params_s* pparams)
 {
-	if (!g_SHLGroundedCameraActive)
-		return;
+	
 
 	if (pparams == nullptr)
 		return;
@@ -873,6 +872,8 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	v_origin = pparams->vieworg;
 	v_angles = pparams->viewangles;
+
+SHL_ClientCameraApplyRefdef(pparams);
 }
 
 void V_SmoothInterpolateAngles(float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec)

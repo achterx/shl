@@ -16,6 +16,18 @@
 #define SHL_MAX_SCENE_PLAYERS 33
 #define SHL_MAX_MONSTER_SCENE_RECOVERY 2048
 
+#define SHL_GROUNDED_ESCAPE_REQUIRED 80.0f
+#define SHL_GROUNDED_ESCAPE_GAIN_PER_MASH 10.0f
+#define SHL_GROUNDED_ESCAPE_MASH_COOLDOWN 0.08f
+
+enum SHLMonsterSceneRecoveryPhase
+{
+	SHL_MONSTER_RECOVERY_PHASE_NONE = 0,
+	SHL_MONSTER_RECOVERY_PHASE_KNOCKDOWN,
+	SHL_MONSTER_RECOVERY_PHASE_FREEZE,
+	SHL_MONSTER_RECOVERY_PHASE_GETUP
+};
+
 struct shl_scene_slot_t
 {
 	bool active;
@@ -50,9 +62,18 @@ struct shl_monster_scene_recovery_t
 	bool active;
 	EHANDLE hMonster;
 	EHANDLE hVisual;
+
+	int phase;
+	float phaseEndTime;
 	float endTime;
 
+	char knockdownSequenceName[64];
 	char holdSequenceName[64];
+	char getupSequenceName[64];
+
+	float knockdownDuration;
+	float freezeDuration;
+	float getupDuration;
 
 	Vector holdOrigin;
 	Vector holdAngles;
@@ -68,6 +89,12 @@ struct shl_monster_scene_recovery_t
 
 static shl_scene_slot_t g_SHLSceneSlots[SHL_MAX_SCENE_PLAYERS];
 static shl_monster_scene_recovery_t g_SHLMonsterSceneRecovery[SHL_MAX_MONSTER_SCENE_RECOVERY];
+
+static float g_SHLGroundedEscapeProgress[SHL_MAX_SCENE_PLAYERS];
+static float g_SHLGroundedEscapeLastMashTime[SHL_MAX_SCENE_PLAYERS];
+static bool g_SHLGroundedEscapeBarActive[SHL_MAX_SCENE_PLAYERS];
+
+static float g_SHLMonsterRegrabBlockedUntil[SHL_MAX_MONSTER_SCENE_RECOVERY];
 
 static int SHL_GetMonsterRecoveryIndex(CBaseEntity* pMonster);
 static void SHL_CancelMonsterSceneRecoveryForDeath(int index);
@@ -185,6 +212,124 @@ static void SHL_SendEscapeBar(edict_t* pPlayer, bool active, float progress)
 	MESSAGE_END();
 }
 
+static void SHL_ResetGroundedEscape(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	g_SHLGroundedEscapeProgress[index] = 0.0f;
+	g_SHLGroundedEscapeLastMashTime[index] = 0.0f;
+	g_SHLGroundedEscapeBarActive[index] = false;
+}
+
+static float SHL_GetGroundedEscapeProgress01(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return 0.0f;
+
+	float progress = g_SHLGroundedEscapeProgress[index] / SHL_GROUNDED_ESCAPE_REQUIRED;
+
+	if (progress < 0.0f)
+		progress = 0.0f;
+
+	if (progress > 1.0f)
+		progress = 1.0f;
+
+	return progress;
+}
+
+static bool SHL_AddGroundedEscapeMash(edict_t* pPlayer)
+{
+	const int index = SHL_GetSceneIndex(pPlayer);
+
+	if (index <= 0)
+		return false;
+
+	if (SHL_GetPlayerStateId(pPlayer) != SHL_PLAYERSTATE_GROUNDED)
+		return false;
+
+	if (gpGlobals->time < g_SHLGroundedEscapeLastMashTime[index] + SHL_GROUNDED_ESCAPE_MASH_COOLDOWN)
+		return false;
+
+	g_SHLGroundedEscapeLastMashTime[index] = gpGlobals->time;
+	g_SHLGroundedEscapeProgress[index] += SHL_GROUNDED_ESCAPE_GAIN_PER_MASH;
+
+	if (g_SHLGroundedEscapeProgress[index] > SHL_GROUNDED_ESCAPE_REQUIRED)
+		g_SHLGroundedEscapeProgress[index] = SHL_GROUNDED_ESCAPE_REQUIRED;
+
+	SHL_SendEscapeBar(pPlayer, true, SHL_GetGroundedEscapeProgress01(index));
+	g_SHLGroundedEscapeBarActive[index] = true;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: grounded escape mash progress %.1f / %.1f\n",
+			g_SHLGroundedEscapeProgress[index],
+			SHL_GROUNDED_ESCAPE_REQUIRED);
+	}
+
+	if (g_SHLGroundedEscapeProgress[index] >= SHL_GROUNDED_ESCAPE_REQUIRED)
+	{
+		if (SHL_DebugEnabled())
+		{
+			ALERT(at_console, "SHL: grounded escape success\n");
+		}
+
+		SHL_SetPlayerState(pPlayer, SHL_PLAYERSTATE_NORMAL);
+		SHL_SendEscapeBar(pPlayer, false, 0.0f);
+		SHL_ResetGroundedEscape(index);
+
+		return true;
+	}
+
+	return true;
+}
+
+static void SHL_ThinkGroundedEscapeBars()
+{
+	for (int i = 1; i < SHL_MAX_SCENE_PLAYERS; ++i)
+	{
+		CBaseEntity* pEntity = UTIL_PlayerByIndex(i);
+
+		if (pEntity == nullptr)
+			continue;
+
+		edict_t* pPlayer = pEntity->edict();
+
+		if (pPlayer == nullptr)
+			continue;
+
+		if (g_SHLSceneSlots[i].active)
+		{
+			if (g_SHLGroundedEscapeBarActive[i])
+			{
+				SHL_SendEscapeBar(pPlayer, false, 0.0f);
+				SHL_ResetGroundedEscape(i);
+			}
+
+			continue;
+		}
+
+		if (SHL_GetPlayerStateId(pPlayer) == SHL_PLAYERSTATE_GROUNDED)
+		{
+			if (!g_SHLGroundedEscapeBarActive[i])
+			{
+				g_SHLGroundedEscapeBarActive[i] = true;
+				SHL_SendEscapeBar(pPlayer, true, SHL_GetGroundedEscapeProgress01(i));
+			}
+		}
+		else
+		{
+			if (g_SHLGroundedEscapeBarActive[i])
+			{
+				SHL_SendEscapeBar(pPlayer, false, 0.0f);
+				SHL_ResetGroundedEscape(i);
+			}
+		}
+	}
+}
+
 static int SHL_GetMonsterRecoveryIndex(CBaseEntity* pMonster)
 {
 	if (pMonster == nullptr)
@@ -199,6 +344,91 @@ static int SHL_GetMonsterRecoveryIndex(CBaseEntity* pMonster)
 		return 0;
 
 	return index;
+}
+
+static void SHL_SetMonsterRegrabCooldown(CBaseEntity* pMonster, float duration)
+{
+	if (pMonster == nullptr)
+		return;
+
+	if (duration <= 0.0f)
+		return;
+
+	const int index = SHL_GetMonsterRecoveryIndex(pMonster);
+
+	if (index <= 0)
+		return;
+
+	g_SHLMonsterRegrabBlockedUntil[index] = gpGlobals->time + duration;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: monster regrab cooldown started entity=%d duration=%.2f\n",
+			index,
+			duration);
+	}
+}
+
+bool SHL_IsMonsterRegrabBlocked(CBaseEntity* pMonster)
+{
+	if (pMonster == nullptr)
+		return false;
+
+	const int index = SHL_GetMonsterRecoveryIndex(pMonster);
+
+	if (index <= 0)
+		return false;
+
+	return gpGlobals->time < g_SHLMonsterRegrabBlockedUntil[index];
+}
+
+bool SHL_IsMonsterActionLocked(CBaseEntity* pMonster)
+{
+	if (pMonster == nullptr)
+		return false;
+
+	if (SHL_IsMonsterInSceneNpcRecovery(pMonster))
+		return true;
+
+	CBaseMonster* pBaseMonster = pMonster->MyMonsterPointer();
+
+	if (pBaseMonster != nullptr)
+	{
+		if (SHL_IsMonsterSceneOwner(pBaseMonster))
+			return true;
+	}
+
+	return false;
+}
+
+bool SHL_IsMonsterGrabBlocked(CBaseEntity* pMonster)
+{
+	if (pMonster == nullptr)
+		return false;
+
+	if (SHL_IsMonsterActionLocked(pMonster))
+		return true;
+
+	if (SHL_IsMonsterRegrabBlocked(pMonster))
+		return true;
+
+	return false;
+}
+
+static void SHL_CopyRecoverySequenceName(char* pszDest, int destSize, const char* pszSource)
+{
+	if (pszDest == nullptr || destSize <= 0)
+		return;
+
+	pszDest[0] = '\0';
+
+	if (pszSource == nullptr || pszSource[0] == '\0')
+		return;
+
+	strncpy(pszDest, pszSource, destSize - 1);
+	pszDest[destSize - 1] = '\0';
 }
 
 static void SHL_ClearMonsterSceneRecoverySlot(int index)
@@ -218,6 +448,18 @@ static void SHL_ClearMonsterSceneRecoverySlot(int index)
 	g_SHLMonsterSceneRecovery[index].hMonster = nullptr;
 	g_SHLMonsterSceneRecovery[index].hVisual = nullptr;
 	g_SHLMonsterSceneRecovery[index].endTime = 0.0f;
+
+	g_SHLMonsterSceneRecovery[index].phase = SHL_MONSTER_RECOVERY_PHASE_NONE;
+	g_SHLMonsterSceneRecovery[index].phaseEndTime = 0.0f;
+	g_SHLMonsterSceneRecovery[index].endTime = 0.0f;
+
+	g_SHLMonsterSceneRecovery[index].knockdownSequenceName[0] = '\0';
+	g_SHLMonsterSceneRecovery[index].holdSequenceName[0] = '\0';
+	g_SHLMonsterSceneRecovery[index].getupSequenceName[0] = '\0';
+
+	g_SHLMonsterSceneRecovery[index].knockdownDuration = 0.0f;
+	g_SHLMonsterSceneRecovery[index].freezeDuration = 0.0f;
+	g_SHLMonsterSceneRecovery[index].getupDuration = 0.0f;
 
 	g_SHLMonsterSceneRecovery[index].holdSequenceName[0] = '\0';
 	g_SHLMonsterSceneRecovery[index].holdOrigin = g_vecZero;
@@ -322,15 +564,88 @@ static CBaseEntity* SHL_CreateMonsterRecoveryVisual(
 	return pVisual;
 }
 
-static void SHL_StartMonsterSceneRecovery(
-	CBaseEntity* pMonster,
-	const char* pszHoldSequence,
-	float duration)
+static bool SHL_RecoverySequenceExists(CBaseAnimating* pAnimating, const char* pszSequenceName)
 {
-	if (pMonster == nullptr)
+	if (pAnimating == nullptr)
+	{
+		if (SHL_DebugEnabled())
+		{
+			ALERT(at_console, "SHL: recovery sequence check failed: animating null\n");
+		}
+
+		return false;
+	}
+
+	if (pszSequenceName == nullptr || pszSequenceName[0] == '\0')
+	{
+		if (SHL_DebugEnabled())
+		{
+			ALERT(at_console, "SHL: recovery sequence check failed: sequence null/empty\n");
+		}
+
+		return false;
+	}
+
+	const int sequence = pAnimating->LookupSequence(pszSequenceName);
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: recovery sequence lookup name=%s result=%d\n",
+			pszSequenceName,
+			sequence);
+	}
+
+	return sequence >= 0;
+}
+
+static bool SHL_StartRecoverySequence(CBaseAnimating* pAnimating, const char* pszSequenceName)
+{
+	if (pAnimating == nullptr)
+		return false;
+
+	if (pszSequenceName == nullptr || pszSequenceName[0] == '\0')
+		return false;
+
+	const int sequence = pAnimating->LookupSequence(pszSequenceName);
+
+	if (sequence < 0)
+		return false;
+
+	pAnimating->pev->sequence = sequence;
+	pAnimating->pev->frame = 0.0f;
+	pAnimating->pev->framerate = 1.0f;
+	pAnimating->pev->velocity = g_vecZero;
+	pAnimating->pev->avelocity = g_vecZero;
+	pAnimating->ResetSequenceInfo();
+
+	return true;
+}
+
+static void SHL_AdvanceRecoveryVisual(CBaseEntity* pVisual)
+{
+	if (pVisual == nullptr)
 		return;
 
-	if (duration <= 0.0f)
+	CBaseAnimating* pAnimating = (CBaseAnimating*)pVisual;
+
+	pAnimating->pev->velocity = g_vecZero;
+	pAnimating->pev->avelocity = g_vecZero;
+	pAnimating->pev->framerate = 1.0f;
+	pAnimating->StudioFrameAdvance();
+}
+
+static void SHL_StartMonsterSceneRecoveryEx(
+	CBaseEntity* pMonster,
+	const char* pszHoldSequence,
+	float freezeDuration,
+	const char* pszKnockdownSequence,
+	float knockdownDuration,
+	const char* pszGetupSequence,
+	float getupDuration)
+{
+	if (pMonster == nullptr)
 		return;
 
 	const int index = SHL_GetMonsterRecoveryIndex(pMonster);
@@ -340,9 +655,43 @@ static void SHL_StartMonsterSceneRecovery(
 
 	SHL_ClearMonsterSceneRecoverySlot(index);
 
+	CBaseAnimating* pMonsterAnimating = (CBaseAnimating*)pMonster;
+
+	const bool hasKnockdown =
+		knockdownDuration > 0.0f &&
+		SHL_RecoverySequenceExists(pMonsterAnimating, pszKnockdownSequence);
+
+	const bool hasGetup =
+		getupDuration > 0.0f &&
+		SHL_RecoverySequenceExists(pMonsterAnimating, pszGetupSequence);
+
+	if (freezeDuration < 0.0f)
+		freezeDuration = 0.0f;
+
+	if (!hasKnockdown && freezeDuration <= 0.0f && !hasGetup)
+		return;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: recovery Ex requested hold=%s freeze=%.2f knockdown=%s %.2f hasKnockdown=%d getup=%s %.2f hasGetup=%d\n",
+			pszHoldSequence != nullptr ? pszHoldSequence : "NULL",
+			freezeDuration,
+			pszKnockdownSequence != nullptr ? pszKnockdownSequence : "NULL",
+			knockdownDuration,
+			hasKnockdown ? 1 : 0,
+			pszGetupSequence != nullptr ? pszGetupSequence : "NULL",
+			getupDuration,
+			hasGetup ? 1 : 0);
+	}
+
 	g_SHLMonsterSceneRecovery[index].active = true;
 	g_SHLMonsterSceneRecovery[index].hMonster = pMonster;
-	g_SHLMonsterSceneRecovery[index].endTime = gpGlobals->time + duration;
+
+	g_SHLMonsterSceneRecovery[index].knockdownDuration = hasKnockdown ? knockdownDuration : 0.0f;
+	g_SHLMonsterSceneRecovery[index].freezeDuration = freezeDuration;
+	g_SHLMonsterSceneRecovery[index].getupDuration = hasGetup ? getupDuration : 0.0f;
 
 	g_SHLMonsterSceneRecovery[index].oldEffects = pMonster->pev->effects;
 	g_SHLMonsterSceneRecovery[index].oldSolid = pMonster->pev->solid;
@@ -350,18 +699,52 @@ static void SHL_StartMonsterSceneRecovery(
 	g_SHLMonsterSceneRecovery[index].holdOrigin = pMonster->pev->origin;
 	g_SHLMonsterSceneRecovery[index].holdAngles = pMonster->pev->angles;
 
-	if (pszHoldSequence != nullptr && pszHoldSequence[0] != '\0')
-	{
-		strncpy(
-			g_SHLMonsterSceneRecovery[index].holdSequenceName,
-			pszHoldSequence,
-			sizeof(g_SHLMonsterSceneRecovery[index].holdSequenceName) - 1);
+	SHL_CopyRecoverySequenceName(
+		g_SHLMonsterSceneRecovery[index].knockdownSequenceName,
+		sizeof(g_SHLMonsterSceneRecovery[index].knockdownSequenceName),
+		hasKnockdown ? pszKnockdownSequence : nullptr);
 
-		g_SHLMonsterSceneRecovery[index].holdSequenceName[sizeof(g_SHLMonsterSceneRecovery[index].holdSequenceName) - 1] = '\0';
-	}
-	else
+	SHL_CopyRecoverySequenceName(
+		g_SHLMonsterSceneRecovery[index].holdSequenceName,
+		sizeof(g_SHLMonsterSceneRecovery[index].holdSequenceName),
+		pszHoldSequence);
+
+	SHL_CopyRecoverySequenceName(
+		g_SHLMonsterSceneRecovery[index].getupSequenceName,
+		sizeof(g_SHLMonsterSceneRecovery[index].getupSequenceName),
+		hasGetup ? pszGetupSequence : nullptr);
+
+	if (hasKnockdown)
 	{
-		g_SHLMonsterSceneRecovery[index].holdSequenceName[0] = '\0';
+		SHL_StartRecoverySequence(pMonsterAnimating, pszKnockdownSequence);
+	}
+	else if (pszHoldSequence != nullptr && pszHoldSequence[0] != '\0')
+	{
+		const int holdSequence = pMonsterAnimating->LookupSequence(pszHoldSequence);
+
+		if (holdSequence >= 0)
+		{
+			pMonsterAnimating->pev->sequence = holdSequence;
+			pMonsterAnimating->pev->frame = 31.0f;
+			pMonsterAnimating->pev->framerate = 0.0f;
+			pMonsterAnimating->pev->velocity = g_vecZero;
+			pMonsterAnimating->pev->avelocity = g_vecZero;
+
+			pMonsterAnimating->ResetSequenceInfo();
+
+			pMonsterAnimating->pev->sequence = holdSequence;
+			pMonsterAnimating->pev->frame = 31.0f;
+			pMonsterAnimating->pev->framerate = 0.0f;
+			pMonsterAnimating->pev->velocity = g_vecZero;
+			pMonsterAnimating->pev->avelocity = g_vecZero;
+		}
+		else if (SHL_DebugEnabled())
+		{
+			ALERT(
+				at_console,
+				"SHL: monster recovery hold sequence missing: %s\n",
+				pszHoldSequence);
+		}
 	}
 
 	g_SHLMonsterSceneRecovery[index].holdSequenceId = pMonster->pev->sequence;
@@ -388,6 +771,37 @@ static void SHL_StartMonsterSceneRecovery(
 
 	g_SHLMonsterSceneRecovery[index].hVisual = pVisual;
 
+	if (hasKnockdown && pVisual != nullptr)
+	{
+		SHL_StartRecoverySequence((CBaseAnimating*)pVisual, pszKnockdownSequence);
+	}
+
+	const float now = gpGlobals->time;
+
+	if (hasKnockdown)
+	{
+		g_SHLMonsterSceneRecovery[index].phase = SHL_MONSTER_RECOVERY_PHASE_KNOCKDOWN;
+		g_SHLMonsterSceneRecovery[index].phaseEndTime = now + knockdownDuration;
+	}
+	else if (freezeDuration > 0.0f)
+	{
+		g_SHLMonsterSceneRecovery[index].phase = SHL_MONSTER_RECOVERY_PHASE_FREEZE;
+		g_SHLMonsterSceneRecovery[index].phaseEndTime = now + freezeDuration;
+	}
+	else if (hasGetup && pVisual != nullptr)
+	{
+		SHL_StartRecoverySequence((CBaseAnimating*)pVisual, pszGetupSequence);
+
+		g_SHLMonsterSceneRecovery[index].phase = SHL_MONSTER_RECOVERY_PHASE_GETUP;
+		g_SHLMonsterSceneRecovery[index].phaseEndTime = now + getupDuration;
+	}
+
+	g_SHLMonsterSceneRecovery[index].endTime =
+		now +
+		g_SHLMonsterSceneRecovery[index].knockdownDuration +
+		g_SHLMonsterSceneRecovery[index].freezeDuration +
+		g_SHLMonsterSceneRecovery[index].getupDuration;
+
 	pMonster->pev->origin = g_SHLMonsterSceneRecovery[index].holdOrigin;
 	pMonster->pev->angles = g_SHLMonsterSceneRecovery[index].holdAngles;
 	pMonster->pev->velocity = g_vecZero;
@@ -400,14 +814,30 @@ static void SHL_StartMonsterSceneRecovery(
 	{
 		ALERT(
 			at_console,
-			"SHL: monster-only scene recovery started entity=%d duration=%.2f sequence=%s visual=%d frame=%.2f sequenceId=%d\n",
+			"SHL: monster recovery started entity=%d freeze=%.2f knockdown=%s %.2f getup=%s %.2f visual=%d\n",
 			index,
-			duration,
-			g_SHLMonsterSceneRecovery[index].holdSequenceName,
-			pVisual != nullptr ? 1 : 0,
-			g_SHLMonsterSceneRecovery[index].holdFrame,
-			g_SHLMonsterSceneRecovery[index].holdSequenceId);
+			freezeDuration,
+			g_SHLMonsterSceneRecovery[index].knockdownSequenceName,
+			g_SHLMonsterSceneRecovery[index].knockdownDuration,
+			g_SHLMonsterSceneRecovery[index].getupSequenceName,
+			g_SHLMonsterSceneRecovery[index].getupDuration,
+			pVisual != nullptr ? 1 : 0);
 	}
+}
+
+static void SHL_StartMonsterSceneRecovery(
+	CBaseEntity* pMonster,
+	const char* pszHoldSequence,
+	float duration)
+{
+	SHL_StartMonsterSceneRecoveryEx(
+		pMonster,
+		pszHoldSequence,
+		duration,
+		nullptr,
+		0.0f,
+		nullptr,
+		0.0f);
 }
 
 static void SHL_ReleaseMonsterFromSceneRecovery(int index)
@@ -494,6 +924,141 @@ static void SHL_CancelMonsterSceneRecoveryForDeath(int index)
 	SHL_ClearMonsterSceneRecoverySlot(index);
 }
 
+static void SHL_SetRecoveryFreezePose(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_MONSTER_SCENE_RECOVERY)
+		return;
+
+	CBaseEntity* pMonster =
+		(CBaseEntity*)g_SHLMonsterSceneRecovery[index].hMonster;
+
+	if (pMonster == nullptr)
+		return;
+
+	CBaseAnimating* pMonsterAnimating = (CBaseAnimating*)pMonster;
+
+	const char* pszHoldSequence =
+		g_SHLMonsterSceneRecovery[index].holdSequenceName;
+
+	if (pszHoldSequence != nullptr && pszHoldSequence[0] != '\0')
+	{
+		const int holdSequence = pMonsterAnimating->LookupSequence(pszHoldSequence);
+
+		if (holdSequence >= 0)
+		{
+			pMonsterAnimating->pev->sequence = holdSequence;
+			pMonsterAnimating->pev->frame = 31.0f;
+			pMonsterAnimating->pev->framerate = 0.0f;
+			pMonsterAnimating->ResetSequenceInfo();
+
+			pMonsterAnimating->pev->sequence = holdSequence;
+			pMonsterAnimating->pev->frame = 31.0f;
+			pMonsterAnimating->pev->framerate = 0.0f;
+		}
+	}
+
+	g_SHLMonsterSceneRecovery[index].holdSequenceId = pMonster->pev->sequence;
+	g_SHLMonsterSceneRecovery[index].holdFrame = pMonster->pev->frame;
+
+	for (int controllerIndex = 0; controllerIndex < 4; ++controllerIndex)
+	{
+		g_SHLMonsterSceneRecovery[index].holdController[controllerIndex] =
+			pMonster->pev->controller[controllerIndex];
+	}
+
+	for (int blendingIndex = 0; blendingIndex < 2; ++blendingIndex)
+	{
+		g_SHLMonsterSceneRecovery[index].holdBlending[blendingIndex] =
+			pMonster->pev->blending[blendingIndex];
+	}
+
+	CBaseEntity* pVisual =
+		(CBaseEntity*)g_SHLMonsterSceneRecovery[index].hVisual;
+
+	if (pVisual != nullptr)
+	{
+		CBaseAnimating* pVisualAnimating = (CBaseAnimating*)pVisual;
+
+		pVisualAnimating->pev->sequence =
+			g_SHLMonsterSceneRecovery[index].holdSequenceId;
+
+		pVisualAnimating->pev->frame =
+			g_SHLMonsterSceneRecovery[index].holdFrame;
+
+		pVisualAnimating->pev->framerate = 0.0f;
+		pVisualAnimating->ResetSequenceInfo();
+
+		pVisualAnimating->pev->sequence =
+			g_SHLMonsterSceneRecovery[index].holdSequenceId;
+
+		pVisualAnimating->pev->frame =
+			g_SHLMonsterSceneRecovery[index].holdFrame;
+
+		pVisualAnimating->pev->framerate = 0.0f;
+	}
+}
+
+static void SHL_EnterRecoveryFreezePhase(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_MONSTER_SCENE_RECOVERY)
+		return;
+
+	g_SHLMonsterSceneRecovery[index].phase = SHL_MONSTER_RECOVERY_PHASE_FREEZE;
+	g_SHLMonsterSceneRecovery[index].phaseEndTime =
+		gpGlobals->time + g_SHLMonsterSceneRecovery[index].freezeDuration;
+
+	SHL_SetRecoveryFreezePose(index);
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: recovery entered FREEZE phase entity=%d duration=%.2f\n",
+			index,
+			g_SHLMonsterSceneRecovery[index].freezeDuration);
+	}
+}
+
+static bool SHL_EnterRecoveryGetupPhase(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_MONSTER_SCENE_RECOVERY)
+		return false;
+
+	if (g_SHLMonsterSceneRecovery[index].getupDuration <= 0.0f)
+		return false;
+
+	if (g_SHLMonsterSceneRecovery[index].getupSequenceName[0] == '\0')
+		return false;
+
+	CBaseEntity* pVisual =
+		(CBaseEntity*)g_SHLMonsterSceneRecovery[index].hVisual;
+
+	if (pVisual == nullptr)
+		return false;
+
+	if (!SHL_StartRecoverySequence(
+			(CBaseAnimating*)pVisual,
+			g_SHLMonsterSceneRecovery[index].getupSequenceName))
+	{
+		return false;
+	}
+
+	g_SHLMonsterSceneRecovery[index].phase = SHL_MONSTER_RECOVERY_PHASE_GETUP;
+	g_SHLMonsterSceneRecovery[index].phaseEndTime =
+		gpGlobals->time + g_SHLMonsterSceneRecovery[index].getupDuration;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: recovery entered GETUP phase entity=%d sequence=%s duration=%.2f\n",
+			index,
+			g_SHLMonsterSceneRecovery[index].getupSequenceName,
+			g_SHLMonsterSceneRecovery[index].getupDuration);
+	}
+
+	return true;
+}
+
 static void SHL_MonsterSceneRecoveryThink()
 {
 	for (int i = 1; i < SHL_MAX_MONSTER_SCENE_RECOVERY; ++i)
@@ -516,20 +1081,63 @@ static void SHL_MonsterSceneRecoveryThink()
 			continue;
 		}
 
-		if (gpGlobals->time >= g_SHLMonsterSceneRecovery[i].endTime)
+		if (gpGlobals->time >= g_SHLMonsterSceneRecovery[i].phaseEndTime)
 		{
-			SHL_ReleaseMonsterFromSceneRecovery(i);
-
-			if (SHL_DebugEnabled())
+			if (g_SHLMonsterSceneRecovery[i].phase == SHL_MONSTER_RECOVERY_PHASE_KNOCKDOWN)
 			{
-				ALERT(
-					at_console,
-					"SHL: monster-only scene recovery finished entity=%d\n",
-					i);
-			}
+				if (g_SHLMonsterSceneRecovery[i].freezeDuration > 0.0f)
+				{
+					SHL_EnterRecoveryFreezePhase(i);
+				}
+				else if (!SHL_EnterRecoveryGetupPhase(i))
+				{
+					SHL_ReleaseMonsterFromSceneRecovery(i);
 
-			SHL_ClearMonsterSceneRecoverySlot(i);
-			continue;
+					if (SHL_DebugEnabled())
+					{
+						ALERT(
+							at_console,
+							"SHL: monster recovery finished after knockdown entity=%d\n",
+							i);
+					}
+
+					SHL_ClearMonsterSceneRecoverySlot(i);
+					continue;
+				}
+			}
+			else if (g_SHLMonsterSceneRecovery[i].phase == SHL_MONSTER_RECOVERY_PHASE_FREEZE)
+			{
+				if (!SHL_EnterRecoveryGetupPhase(i))
+				{
+					SHL_ReleaseMonsterFromSceneRecovery(i);
+
+					if (SHL_DebugEnabled())
+					{
+						ALERT(
+							at_console,
+							"SHL: monster recovery finished entity=%d\n",
+							i);
+					}
+
+					SHL_ClearMonsterSceneRecoverySlot(i);
+					continue;
+				}
+			}
+			else if (g_SHLMonsterSceneRecovery[i].phase == SHL_MONSTER_RECOVERY_PHASE_GETUP)
+			{
+				SHL_ReleaseMonsterFromSceneRecovery(i);
+
+				if (SHL_DebugEnabled())
+				{
+					ALERT(
+						at_console,
+						"SHL: monster recovery getup finished entity=%d\n",
+						i);
+				}
+
+				SHL_ClearMonsterSceneRecoverySlot(i);
+				continue;
+			}
 		}
 
 		pMonster->pev->origin = g_SHLMonsterSceneRecovery[i].holdOrigin;
@@ -562,24 +1170,32 @@ static void SHL_MonsterSceneRecoveryThink()
 			CSHLMonsterRecoveryVisual* pVisualAnimating =
 				(CSHLMonsterRecoveryVisual*)pVisual;
 
-			pVisualAnimating->pev->sequence =
-				g_SHLMonsterSceneRecovery[i].holdSequenceId;
-
-			pVisualAnimating->pev->frame =
-				g_SHLMonsterSceneRecovery[i].holdFrame;
-
-			pVisualAnimating->pev->framerate = 0.0f;
-
-			for (int controllerIndex = 0; controllerIndex < 4; ++controllerIndex)
+			if (g_SHLMonsterSceneRecovery[i].phase == SHL_MONSTER_RECOVERY_PHASE_KNOCKDOWN ||
+				g_SHLMonsterSceneRecovery[i].phase == SHL_MONSTER_RECOVERY_PHASE_GETUP)
 			{
-				pVisualAnimating->pev->controller[controllerIndex] =
-					g_SHLMonsterSceneRecovery[i].holdController[controllerIndex];
+				SHL_AdvanceRecoveryVisual(pVisual);
 			}
-
-			for (int blendingIndex = 0; blendingIndex < 2; ++blendingIndex)
+			else
 			{
-				pVisualAnimating->pev->blending[blendingIndex] =
-					g_SHLMonsterSceneRecovery[i].holdBlending[blendingIndex];
+				pVisualAnimating->pev->sequence =
+					g_SHLMonsterSceneRecovery[i].holdSequenceId;
+
+				pVisualAnimating->pev->frame =
+					g_SHLMonsterSceneRecovery[i].holdFrame;
+
+				pVisualAnimating->pev->framerate = 0.0f;
+
+				for (int controllerIndex = 0; controllerIndex < 4; ++controllerIndex)
+				{
+					pVisualAnimating->pev->controller[controllerIndex] =
+						g_SHLMonsterSceneRecovery[i].holdController[controllerIndex];
+				}
+
+				for (int blendingIndex = 0; blendingIndex < 2; ++blendingIndex)
+				{
+					pVisualAnimating->pev->blending[blendingIndex] =
+						g_SHLMonsterSceneRecovery[i].holdBlending[blendingIndex];
+				}
 			}
 		}
 	}
@@ -737,11 +1353,13 @@ void SHL_InitSceneSystem()
 	for (int i = 0; i < SHL_MAX_SCENE_PLAYERS; ++i)
 	{
 		SHL_ClearSceneSlot(i);
+		SHL_ResetGroundedEscape(i);
 	}
 
 	for (int i = 0; i < SHL_MAX_MONSTER_SCENE_RECOVERY; ++i)
 	{
 		SHL_ClearMonsterSceneRecoverySlot(i);
+		g_SHLMonsterRegrabBlockedUntil[i] = 0.0f;
 	}
 }
 
@@ -756,6 +1374,19 @@ bool SHL_IsPlayerInScene(edict_t* pPlayer)
 		return false;
 
 	return true;
+}
+
+CBaseEntity* SHL_GetPlayerSceneOwner(edict_t* pPlayer)
+{
+	const int index = SHL_GetSceneIndex(pPlayer);
+
+	if (index <= 0)
+		return nullptr;
+
+	if (!g_SHLSceneSlots[index].active)
+		return nullptr;
+
+	return (CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster;
 }
 
 bool SHL_IsMonsterSceneOwner(CBaseMonster* pMonster)
@@ -908,7 +1539,9 @@ bool SHL_AddSceneEscapeMash(edict_t* pPlayer)
 		return false;
 
 	if (!g_SHLSceneSlots[index].active)
-		return false;
+	{
+		return SHL_AddGroundedEscapeMash(pPlayer);
+	}
 
 	const shl_scene_profile_t* pProfile =
 		SHL_GetSceneProfile(g_SHLSceneSlots[index].sceneType);
@@ -965,16 +1598,41 @@ bool SHL_AddSceneEscapeMash(edict_t* pPlayer)
 		{
 			ALERT(
 				at_console,
-				"SHL: scene escape success type=%s\n",
+				"SHL: scene escape success type=%s, starting monster escape recovery\n",
 				SHL_SceneTypeName(g_SHLSceneSlots[index].sceneType));
+		}
+
+		CBaseEntity* pOwnerMonster =
+			(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster;
+
+		if (pOwnerMonster != nullptr)
+		{
+			const bool wantsDedicatedEscapeRecovery =
+				pProfile->monsterEscapeKnockdownSequence != nullptr &&
+				pProfile->monsterEscapeKnockdownSequence[0] != '\0' &&
+				pProfile->monsterEscapeKnockdownDuration > 0.0f &&
+				pProfile->monsterRecoveryGetupSequence != nullptr &&
+				pProfile->monsterRecoveryGetupSequence[0] != '\0' &&
+				pProfile->monsterRecoveryGetupDuration > 0.0f;
+
+			SHL_StartMonsterSceneRecoveryEx(
+				pOwnerMonster,
+				pProfile->monsterNpcClimaxSequence,
+				wantsDedicatedEscapeRecovery ? 0.0f : SHL_NormalEscapeRecoveryDuration(),
+				pProfile->monsterEscapeKnockdownSequence,
+				pProfile->monsterEscapeKnockdownDuration,
+				pProfile->monsterRecoveryGetupSequence,
+				pProfile->monsterRecoveryGetupDuration);
+
+			SHL_SetMonsterRegrabCooldown(
+				pOwnerMonster,
+				SHL_NormalEscapeRecoveryDuration() + SHL_NormalRegrabCooldown());
 		}
 
 		SHL_SendEscapeBar(pPlayer, false, 0.0f);
 		SHL_EndPlayerScene(pPlayer, SHL_SCENE_END_FORCED);
 		return true;
 	}
-
-	return true;
 }
 
 static void SHL_StartSceneSlot(edict_t* pPlayer, int sceneType, CBaseMonster* pOwnerMonster, float duration)
@@ -1006,6 +1664,7 @@ static void SHL_StartSceneSlot(edict_t* pPlayer, int sceneType, CBaseMonster* pO
 
 	g_SHLSceneSlots[index].escapeProgress = 0.0f;
 	g_SHLSceneSlots[index].lastEscapeMashTime = 0.0f;
+	SHL_ResetGroundedEscape(index);
 
 	const shl_scene_profile_t* pProfile = SHL_GetSceneProfile(sceneType);
 
@@ -1392,6 +2051,10 @@ static void SHL_StartSceneClimaxAnimation(edict_t* pPlayer, int index)
 	g_SHLSceneSlots[index].climaxStartTime = gpGlobals->time;
 	g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax = true;
 
+	g_SHLSceneSlots[index].escapeProgress = 0.0f;
+	g_SHLSceneSlots[index].lastEscapeMashTime = 0.0f;
+	SHL_SendEscapeBar(pPlayer, false, 0.0f);
+
 	g_SHLSceneSlots[index].npcEndurance -= SHL_NormalNpcEnduranceDrainPerPlayerClimax();
 
 	if (g_SHLSceneSlots[index].npcEndurance < 0.0f)
@@ -1461,6 +2124,10 @@ static void SHL_StartNpcClimaxAnimation(edict_t* pPlayer, int index)
 
 	g_SHLSceneSlots[index].npcClimaxStarted = true;
 	g_SHLSceneSlots[index].npcClimaxStartTime = gpGlobals->time;
+
+	g_SHLSceneSlots[index].escapeProgress = 0.0f;
+	g_SHLSceneSlots[index].lastEscapeMashTime = 0.0f;
+	SHL_SendEscapeBar(pPlayer, false, 0.0f);
 
 	g_SHLSceneSlots[index].climaxAnimationStarted = true;
 	g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax = false;
@@ -1712,10 +2379,14 @@ static void SHL_ThinkNpcClimaxFlow(edict_t* pPlayer, int index)
 
 			if (pOwnerMonster != nullptr)
 			{
-				SHL_StartMonsterSceneRecovery(
+				SHL_StartMonsterSceneRecoveryEx(
 					pOwnerMonster,
 					pProfile->monsterNpcClimaxSequence,
-					SHL_NormalNpcRecoveryDuration());
+					SHL_NormalNpcRecoveryDuration(),
+					nullptr,
+					0.0f,
+					pProfile->monsterRecoveryGetupSequence,
+					pProfile->monsterRecoveryGetupDuration);
 			}
 
 			SHL_EndPlayerScene(pPlayer, SHL_SCENE_END_FORCED);
@@ -1765,9 +2436,20 @@ static void SHL_ThinkPlayerClimaxReturn(edict_t* pPlayer, int index)
 	g_SHLSceneSlots[index].startAnimationStarted = true;
 	g_SHLSceneSlots[index].loopAnimationStarted = true;
 
+	g_SHLSceneSlots[index].escapeProgress = 0.0f;
+	g_SHLSceneSlots[index].lastEscapeMashTime = 0.0f;
+
 	if (SHL_GetPlayerStateId(pPlayer) == SHL_PLAYERSTATE_CLIMAX_LOCKED)
 	{
 		SHL_SetPlayerState(pPlayer, SHL_PLAYERSTATE_GRABBED);
+	}
+
+	const shl_scene_profile_t* pEscapeProfile =
+		SHL_GetSceneProfile(g_SHLSceneSlots[index].sceneType);
+
+	if (pEscapeProfile != nullptr && pEscapeProfile->supportsEscape)
+	{
+		SHL_SendEscapeBar(pPlayer, true, 0.0f);
 	}
 
 	if (pProfile->supportsSceneAnimation)
@@ -2066,6 +2748,7 @@ static void SHL_ApplySceneProfileTick(edict_t* pPlayer, int index)
 void SHL_SceneThink()
 {
 	SHL_MonsterSceneRecoveryThink();
+	SHL_ThinkGroundedEscapeBars();
 
 	for (int i = 1; i < SHL_MAX_SCENE_PLAYERS; ++i)
 	{

@@ -49,8 +49,16 @@ const char* SHL_SceneEndReasonName(int reason);
 
 bool SHL_IsMonsterInSceneNpcRecovery(CBaseEntity* pMonster);
 bool SHL_ApplyMonsterSceneRecovery(CBaseAnimating* pMonster);
+bool SHL_IsMonsterRegrabBlocked(CBaseEntity* pMonster);
+
+bool SHL_IsMonsterActionLocked(CBaseEntity* pMonster);
+bool SHL_IsMonsterGrabBlocked(CBaseEntity* pMonster);
+
+CBaseEntity* SHL_GetPlayerSceneOwner(edict_t* pPlayer);
 
 bool SHL_AddSceneEscapeMash(edict_t* pPlayer);
 float SHL_GetPlayerSceneEscapeProgress(edict_t* pPlayer);
+
+
 
 #endif // SHL_SCENE_H

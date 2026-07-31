@@ -9,15 +9,19 @@
 #include "shl_control.h"
 #include "shl_scene.h"
 #include "shl_scene_profile.h"
+#include "shl_camera.h"
 
 #define SHL_MAX_CONTROL_STATES 33
 
 static bool g_SHLWeaponHidden[SHL_MAX_CONTROL_STATES];
-static bool g_SHLLastSentGroundedCam[SHL_MAX_CONTROL_STATES];
 static string_t g_SHLSavedViewModel[SHL_MAX_CONTROL_STATES];
 static string_t g_SHLSavedWeaponModel[SHL_MAX_CONTROL_STATES];
 
 static bool g_SHLLastSentInputLock[SHL_MAX_CONTROL_STATES];
+static int g_SHLLastSentCameraMode[SHL_MAX_CONTROL_STATES];
+static int g_SHLLastSentCameraPitch[SHL_MAX_CONTROL_STATES];
+static int g_SHLLastSentCameraYaw[SHL_MAX_CONTROL_STATES];
+static bool g_SHLCameraInitialized[SHL_MAX_CONTROL_STATES];
 
 static int SHL_GetControlIndex(edict_t* pEntity)
 {
@@ -68,51 +72,140 @@ static bool SHL_ProfileHidesWeapon(edict_t* pEntity)
 	return pProfile->hidesWeapon;
 }
 
-static bool SHL_ProfileUsesGroundedCamera(edict_t* pEntity)
+static int SHL_GetCameraModeForPlayer(edict_t* pEntity)
 {
-	const shl_scene_profile_t* pProfile = SHL_GetActiveSceneProfileForPlayer(pEntity);
+	if (pEntity == nullptr)
+		return SHL_CAMERA_NONE;
 
-	if (pProfile == nullptr)
-		return false;
+	const int state = SHL_GetPlayerStateId(pEntity);
 
-	return pProfile->usesGroundedCamera;
+	switch (state)
+	{
+	case SHL_PLAYERSTATE_GROUNDED:
+		return SHL_CAMERA_GROUNDED;
+
+	case SHL_PLAYERSTATE_GRABBED:
+		return SHL_CAMERA_GRABBED;
+
+	case SHL_PLAYERSTATE_ACTIVE_SCENE:
+		return SHL_CAMERA_SCENE;
+
+	case SHL_PLAYERSTATE_CLIMAX_LOCKED:
+		return SHL_CAMERA_CLIMAX;
+
+	case SHL_PLAYERSTATE_DEFEAT_SCENE:
+	case SHL_PLAYERSTATE_DEFEAT_MENU:
+		return SHL_CAMERA_DEFEAT;
+
+	default:
+		break;
+	}
+
+	return SHL_CAMERA_NONE;
 }
 
-static void SHL_UpdateGroundedCameraMessage(edict_t* pEntity)
+static int SHL_CameraAngleToShort(float angle)
+{
+	while (angle < 0.0f)
+		angle += 360.0f;
+
+	while (angle >= 360.0f)
+		angle -= 360.0f;
+
+	return (int)(angle * 65536.0f / 360.0f) & 65535;
+}
+
+static void SHL_GetCameraLookAnglesToSceneOwner(
+	edict_t* pEntity,
+	float& pitch,
+	float& yaw,
+	bool& hasTarget)
+{
+	pitch = 0.0f;
+	yaw = 0.0f;
+	hasTarget = false;
+
+	if (pEntity == nullptr)
+		return;
+
+	CBaseEntity* pOwner = SHL_GetPlayerSceneOwner(pEntity);
+
+	if (pOwner == nullptr)
+		return;
+
+	Vector from = pEntity->v.origin + pEntity->v.view_ofs;
+	Vector to = pOwner->pev->origin + Vector(0.0f, 0.0f, 48.0f);
+
+	Vector delta = to - from;
+
+	if (delta.Length() <= 1.0f)
+		return;
+
+	Vector angles = UTIL_VecToAngles(delta);
+
+	pitch = -angles.x;
+	yaw = angles.y;
+	hasTarget = true;
+}
+
+static void SHL_UpdateCameraModeMessage(edict_t* pEntity)
 {
 	const int index = SHL_GetControlIndex(pEntity);
 
 	if (index <= 0)
 		return;
 
-	const int state = SHL_GetPlayerStateId(pEntity);
+	const int cameraMode = SHL_GetCameraModeForPlayer(pEntity);
 
-	const bool shouldUseGroundedCam =
-		state == SHL_PLAYERSTATE_GROUNDED ||
-		SHL_ProfileUsesGroundedCamera(pEntity);
+	float pitch = 0.0f;
+	float yaw = 0.0f;
+	bool hasTarget = false;
 
-	if (g_SHLLastSentGroundedCam[index] == shouldUseGroundedCam)
-		return;
-
-	if (gmsgSHLGroundedCam <= 0)
+	if (cameraMode == SHL_CAMERA_GRABBED ||
+		cameraMode == SHL_CAMERA_SCENE ||
+		cameraMode == SHL_CAMERA_CLIMAX)
 	{
-		if (SHL_DebugEnabled())
-		{
-			ALERT(at_console, "SHL ERROR: SHLGCam message id is 0, not sending\n");
-		}
+		SHL_GetCameraLookAnglesToSceneOwner(
+			pEntity,
+			pitch,
+			yaw,
+			hasTarget);
+	}
 
+	const int pitchShort = hasTarget ? SHL_CameraAngleToShort(pitch) : 0;
+	const int yawShort = hasTarget ? SHL_CameraAngleToShort(yaw) : 0;
+
+	if (g_SHLCameraInitialized[index] &&
+		g_SHLLastSentCameraMode[index] == cameraMode &&
+		g_SHLLastSentCameraPitch[index] == pitchShort &&
+		g_SHLLastSentCameraYaw[index] == yawShort)
+	{
 		return;
 	}
 
-	g_SHLLastSentGroundedCam[index] = shouldUseGroundedCam;
+	g_SHLCameraInitialized[index] = true;
+	g_SHLLastSentCameraMode[index] = cameraMode;
+	g_SHLLastSentCameraPitch[index] = pitchShort;
+	g_SHLLastSentCameraYaw[index] = yawShort;
 
-	MESSAGE_BEGIN(MSG_ONE, gmsgSHLGroundedCam, nullptr, pEntity);
-	WRITE_BYTE(shouldUseGroundedCam ? 1 : 0);
-	MESSAGE_END();
+	if (hasTarget)
+	{
+		SHL_SendCameraModeAngles(pEntity, cameraMode, pitch, yaw);
+	}
+	else
+	{
+		SHL_SendCameraMode(pEntity, cameraMode);
+	}
 
 	if (SHL_DebugEnabled())
 	{
-		ALERT(at_console, "SHL: sent grounded camera %d\n", shouldUseGroundedCam ? 1 : 0);
+		ALERT(
+			at_console,
+			"SHL: sent camera mode %d pitch %.1f yaw %.1f target=%d\n",
+			cameraMode,
+			pitch,
+			yaw,
+			hasTarget ? 1 : 0);
 	}
 }
 
@@ -196,7 +289,7 @@ static void SHL_UpdatePlayerWeaponHide(edict_t* pEntity)
 void SHL_UpdatePlayerControl(edict_t* pEntity)
 {
 	SHL_UpdateClientInputLockMessage(pEntity);
-	SHL_UpdateGroundedCameraMessage(pEntity);
+	SHL_UpdateCameraModeMessage(pEntity);
 	SHL_UpdatePlayerWeaponHide(pEntity);
 }
 
@@ -218,14 +311,14 @@ void SHL_ForceRestorePlayerControl(edict_t* pEntity)
 
 	g_SHLLastSentInputLock[index] = false;
 
-	if (gmsgSHLGroundedCam > 0)
-	{
-		MESSAGE_BEGIN(MSG_ONE, gmsgSHLGroundedCam, nullptr, pEntity);
-		WRITE_BYTE(0);
-		MESSAGE_END();
-	}
+	g_SHLLastSentCameraMode[index] = -1;
+	g_SHLCameraInitialized[index] = false;
+	g_SHLLastSentCameraMode[index] = SHL_CAMERA_NONE;
+	g_SHLLastSentCameraPitch[index] = 0;
+	g_SHLLastSentCameraYaw[index] = 0;
 
-	g_SHLLastSentGroundedCam[index] = false;
+	SHL_SendCameraMode(pEntity, SHL_CAMERA_NONE);
+	g_SHLLastSentCameraMode[index] = SHL_CAMERA_NONE;
 
 	if (g_SHLWeaponHidden[index])
 	{

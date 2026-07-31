@@ -83,6 +83,19 @@ struct HUDLIST
 	HUDLIST* pNext;
 };
 
+class CHudSHLEscapeBar : public CHudBase
+{
+public:
+	bool Init(void) override;
+	bool VidInit(void) override;
+	bool Draw(float flTime) override;
+	bool MsgFunc_SHLEsc(const char* pszName, int iSize, void* pbuf);
+
+private:
+	int m_iActive;
+	int m_iPercent;
+};
+
 
 
 //
@@ -572,6 +585,7 @@ public:
 	CHudAmmoSecondary m_AmmoSecondary;
 	CHudTextMessage m_TextMessage;
 	CHudStatusIcons m_StatusIcons;
+	CHudSHLEscapeBar m_SHLEscapeBar;	
 
 	void Init();
 	void VidInit();

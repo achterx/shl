@@ -93,6 +93,8 @@ void ShutdownInput();
 bool g_SHLClientInputLocked = false;
 bool g_SHLGroundedCameraActive = false;
 
+DECLARE_MESSAGE(m_SHLEscapeBar, SHLEsc);
+
 int __MsgFunc_SHLInL(const char* pszName, int iSize, void* pbuf)
 {
 	BEGIN_READ(pbuf, iSize);
@@ -349,6 +351,7 @@ void CHud::Init()
 
 	HOOK_MESSAGE(SHLInL);
 	HOOK_MESSAGE(SHLGCam);
+	HOOK_MESSAGE(SHLEsc);
 
 
 	HOOK_MESSAGE(Spectator);
@@ -410,6 +413,7 @@ void CHud::Init()
 	m_AmmoSecondary.Init();
 	m_TextMessage.Init();
 	m_StatusIcons.Init();
+	m_SHLEscapeBar.Init();
 	GetClientVoiceMgr()->Init(&g_VoiceStatusHelper, (vgui::Panel**)&gViewPort);
 
 	m_Menu.Init();
@@ -564,6 +568,7 @@ void CHud::VidInit()
 	m_AmmoSecondary.VidInit();
 	m_TextMessage.VidInit();
 	m_StatusIcons.VidInit();
+	m_SHLEscapeBar.VidInit();
 	GetClientVoiceMgr()->VidInit();
 }
 
@@ -747,4 +752,71 @@ void CHud::AddHudElem(CHudBase* phudelem)
 float CHud::GetSensitivity()
 {
 	return m_flMouseSensitivity;
+}
+
+bool CHudSHLEscapeBar::Init(void)
+{
+	m_iActive = 0;
+	m_iPercent = 0;
+
+	gHUD.AddHudElem(this);
+
+	return true;
+}
+
+bool CHudSHLEscapeBar::VidInit(void)
+{
+	m_iActive = 0;
+	m_iPercent = 0;
+
+	return true;
+}
+
+bool CHudSHLEscapeBar::MsgFunc_SHLEsc(const char* pszName, int iSize, void* pbuf)
+{
+	BEGIN_READ(pbuf, iSize);
+
+	m_iActive = READ_BYTE();
+	m_iPercent = READ_BYTE();
+
+	if (m_iPercent < 0)
+		m_iPercent = 0;
+
+	if (m_iPercent > 100)
+		m_iPercent = 100;
+
+	return true;
+}
+
+bool CHudSHLEscapeBar::Draw(float flTime)
+{
+	if (!m_iActive)
+		return true;
+
+	const int barWidth = ScreenWidth / 3;
+	const int barHeight = 10;
+
+	const int x = (ScreenWidth - barWidth) / 2;
+	const int y = ScreenHeight - 120;
+
+	const int fillWidth = (barWidth * m_iPercent) / 100;
+
+	FillRGBA(x - 2, y - 2, barWidth + 4, barHeight + 4, 0, 0, 0, 160);
+	FillRGBA(x, y, barWidth, barHeight, 20, 20, 20, 180);
+
+	if (fillWidth > 0)
+	{
+		FillRGBA(x, y, fillWidth, barHeight, 120, 220, 255, 220);
+	}
+
+	gHUD.DrawHudString(
+		x,
+		y - 18,
+		x + barWidth,
+		"ESCAPE",
+		120,
+		220,
+		255);
+
+	return true;
 }

@@ -47,4 +47,10 @@ float SHL_NormalNpcRecoveryDuration();
 const char* SHL_SceneTypeName(int sceneType);
 const char* SHL_SceneEndReasonName(int reason);
 
+bool SHL_IsMonsterInSceneNpcRecovery(CBaseEntity* pMonster);
+bool SHL_ApplyMonsterSceneRecovery(CBaseAnimating* pMonster);
+
+bool SHL_AddSceneEscapeMash(edict_t* pPlayer);
+float SHL_GetPlayerSceneEscapeProgress(edict_t* pPlayer);
+
 #endif // SHL_SCENE_H

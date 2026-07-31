@@ -196,6 +196,23 @@ void CMonsterSHLNormal::TryStartGroundedGrab()
 
 void CMonsterSHLNormal::PrescheduleThink()
 {
+	if (SHL_ApplyMonsterSceneRecovery(this))
+	{
+		m_flNextPunchTime = gpGlobals->time + 0.5f;
+		ClearConditions(bits_COND_CAN_MELEE_ATTACK1);
+		return;
+	}
+	
+	
+	if (SHL_IsMonsterInSceneNpcRecovery(this))
+	{
+		pev->velocity = g_vecZero;
+		pev->avelocity = g_vecZero;
+		pev->framerate = 0.0f;
+		m_flNextPunchTime = gpGlobals->time + 0.5f;
+		return;
+	}
+	
 	if (SHL_IsMonsterSceneOwner(this))
 	{
 		pev->velocity = g_vecZero;
@@ -204,9 +221,6 @@ void CMonsterSHLNormal::PrescheduleThink()
 		// Do not request IDLE_STAND while scene owns animation.
 		// Returning base schedule can briefly force ACT_IDLE/stand.
 	}
-
-	if (SHL_ApplyNpcRecovery(this))
-		return;
 
 	CBaseMonster::PrescheduleThink();
 
@@ -248,6 +262,9 @@ void CMonsterSHLNormal::PrescheduleThink()
 
 bool CMonsterSHLNormal::CheckMeleeAttack1(float flDot, float flDist)
 {
+	if (SHL_IsMonsterInSceneNpcRecovery(this))
+		return false;
+	
 	if (SHL_IsNpcRecovering(this))
 		return false;
 	
@@ -271,18 +288,12 @@ bool CMonsterSHLNormal::CheckMeleeAttack1(float flDot, float flDist)
 
 Schedule_t* CMonsterSHLNormal::GetSchedule()
 {
-	if (SHL_IsNpcRecovering(this))
-	{
-		return CBaseMonster::GetScheduleOfType(SCHED_IDLE_STAND);
-	}
-	
 	if (SHL_IsMonsterSceneOwner(this))
 	{
 		pev->velocity = g_vecZero;
 		pev->avelocity = g_vecZero;
 
 		return CBaseMonster::GetScheduleOfType(SCHED_IDLE_STAND);
-		return nullptr;
 	}
 
 	CBaseEntity* pEnemy = GetEnemyEntity();
@@ -340,6 +351,9 @@ Schedule_t* CMonsterSHLNormal::GetSchedule()
 
 void CMonsterSHLNormal::HandleAnimEvent(MonsterEvent_t* pEvent)
 {
+	if (SHL_IsMonsterInSceneNpcRecovery(this))
+		return;
+	
 	switch (pEvent->event)
 	{
 	case SHL_NORMAL_AE_PUNCH_HIT:

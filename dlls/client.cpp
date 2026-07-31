@@ -53,6 +53,7 @@
 #include "../projects/vs2019/shl_control.h"
 #include "../projects/vs2019/shl_scene.h"
 #include "../projects/vs2019/shl_concussion.h"
+#include "../projects/vs2019/shl_scene.h"
 
 DLL_GLOBAL unsigned int g_ulFrameCount;
 
@@ -580,6 +581,12 @@ void ClientCommand(edict_t* pEntity)
 			SHL_GetPlayerSceneRemaining(pEntity),
 			SHL_GetPlayerSceneProgress(pEntity));
 
+		return;
+	}
+
+	if (FStrEq(pcmd, "shl_escape"))
+	{
+		SHL_AddSceneEscapeMash(pEntity);
 		return;
 	}
 

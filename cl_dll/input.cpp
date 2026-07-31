@@ -651,6 +651,55 @@ if active == 1 then we are 1) not playing back demos ( where our commands are ig
 2 ) we have finished signing on to server
 ================
 */
+static float g_flSHLNextEscapeSendTime = 0.0f;
+
+static void SHL_ClientSendEscapeMash()
+{
+	const float now = gEngfuncs.GetClientTime();
+
+	if (now < g_flSHLNextEscapeSendTime)
+		return;
+
+	g_flSHLNextEscapeSendTime = now + 0.08f;
+
+	gEngfuncs.pfnServerCmd("shl_escape\n");
+}
+
+static void SHL_ClientCheckEscapeMashFromCmd(usercmd_t* cmd)
+{
+	if (cmd == nullptr)
+		return;
+
+	if (cmd->forwardmove != 0.0f)
+	{
+		SHL_ClientSendEscapeMash();
+		return;
+	}
+
+	if (cmd->sidemove != 0.0f)
+	{
+		SHL_ClientSendEscapeMash();
+		return;
+	}
+
+	if (cmd->buttons & IN_USE)
+	{
+		SHL_ClientSendEscapeMash();
+		return;
+	}
+
+	if (cmd->buttons & IN_RELOAD)
+	{
+		SHL_ClientSendEscapeMash();
+		return;
+	}
+
+	if (cmd->buttons & IN_JUMP)
+	{
+		SHL_ClientSendEscapeMash();
+		return;
+	}
+}
 void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 {
 	//	RecClCL_CreateMove(frametime, cmd, active);
@@ -733,6 +782,7 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 
 	if (g_SHLClientInputLocked)
 	{
+		SHL_ClientCheckEscapeMashFromCmd(cmd);
 		cmd->forwardmove = 0.0f;
 		cmd->sidemove = 0.0f;
 		cmd->upmove = 0.0f;

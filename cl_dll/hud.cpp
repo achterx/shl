@@ -336,6 +336,7 @@ void CHud::Init()
 	gEngfuncs.pfnAddCommand("save", __CmdFunc_SHLSaveBlock);
 	gEngfuncs.pfnAddCommand("quick", __CmdFunc_SHLSaveBlock);
 	gEngfuncs.pfnAddCommand("quicksave", __CmdFunc_SHLSaveBlock);
+	gEngfuncs.pfnAddCommand("shl_sceneedit_cursor", SHL_ClientSceneEditorCursorCommand);
 
 	HOOK_MESSAGE(ValClass);
 	HOOK_MESSAGE(TeamNames);

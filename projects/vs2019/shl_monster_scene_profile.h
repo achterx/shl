@@ -6,6 +6,7 @@ struct shl_scene_actor_anchor_t
 	float forward;
 	float right;
 	float z;
+	float pitchOffset;
 	float yawOffset;
 	bool dropToFloor;
 };

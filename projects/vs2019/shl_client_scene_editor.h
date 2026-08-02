@@ -13,5 +13,8 @@ bool SHL_ClientSceneEditorEnabled();
 
 void SHL_ClientSceneEditorMove(struct usercmd_s* cmd);
 void SHL_ClientSceneEditorApplyRefdef(struct ref_params_s* pparams);
+void SHL_ClientSceneEditorMouse(struct usercmd_s* cmd);
+void SHL_ClientSceneEditorCursorCommand();
+bool SHL_ClientSceneEditorCursorEnabled();
 
 #endif

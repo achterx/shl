@@ -64,4 +64,6 @@ float SHL_GetPlayerSceneEscapeProgress(edict_t* pPlayer);
 
 bool SHL_GetPlayerSceneAnchor(edict_t* pPlayer, Vector& origin, float& yaw);
 
+bool SHL_ReapplyCurrentSceneAnchors(edict_t* pPlayer);
+
 #endif // SHL_SCENE_H

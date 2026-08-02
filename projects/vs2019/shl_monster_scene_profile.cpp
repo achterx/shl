@@ -28,11 +28,12 @@ static const shl_monster_scene_profile_t g_SHLNormalGroundedGrab =
 		1.60f,
 
 		// Player scene actor anchor.
-		{0.0f, 0.0f, 0.0f, 0.0f, false},
+		{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false}, // player
 
 		// Monster anchor.
 		// Smaller forward = more centered over player.
-		{8.0f, 0.0f, 0.0f, 180.0f, true}};
+		{8.0f, 0.0f, 0.0f, 0.0f, 180.0f, true}
+};
 
 const shl_monster_scene_profile_t* SHL_GetMonsterSceneProfile(
 	CBaseEntity* pMonster,

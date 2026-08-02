@@ -420,31 +420,6 @@ void V_CalcViewRoll(struct ref_params_s* pparams)
 	}
 }
 
-static void SHL_ApplyGroundedCameraView(struct ref_params_s* pparams)
-{
-	
-
-	if (pparams == nullptr)
-		return;
-
-	if (pparams->intermission != 0)
-		return;
-
-	if (pparams->spectator != 0 || g_iUser1 != 0)
-		return;
-
-	// Copy the dead in-eye camera behavior:
-	// V_GetInEyePos uses entity origin + VEC_DEAD_VIEW and roll 80
-	// when the viewed player is dead.
-	VectorCopy(pparams->simorg, pparams->vieworg);
-	VectorAdd(pparams->vieworg, VEC_DEAD_VIEW, pparams->vieworg);
-
-	pparams->viewangles[ROLL] = 80.0f;
-
-	// Keep pitch/yaw from the real player view, but force corpse-style roll.
-	// This gives grounded state the dead-camera feel without calling StartDeathCam().
-}
-
 
 /*
 ==================
@@ -868,12 +843,10 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	lasttime = pparams->time;
 
-	SHL_ApplyGroundedCameraView(pparams);
+	SHL_ClientCameraApplyRefdef(pparams);
 
 	v_origin = pparams->vieworg;
 	v_angles = pparams->viewangles;
-
-SHL_ClientCameraApplyRefdef(pparams);
 }
 
 void V_SmoothInterpolateAngles(float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec)

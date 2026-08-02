@@ -59,6 +59,6 @@ CBaseEntity* SHL_GetPlayerSceneOwner(edict_t* pPlayer);
 bool SHL_AddSceneEscapeMash(edict_t* pPlayer);
 float SHL_GetPlayerSceneEscapeProgress(edict_t* pPlayer);
 
-
+bool SHL_GetPlayerSceneAnchor(edict_t* pPlayer, Vector& origin, float& yaw);
 
 #endif // SHL_SCENE_H

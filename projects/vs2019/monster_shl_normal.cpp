@@ -32,6 +32,7 @@ private:
 	void FaceEnemyFlat();
 	void TryStartGroundedGrab();
 	bool IsEnemyInNoMeleeState();
+	void MoveToExactGroundedStopRange(CBaseEntity* pEnemy);
 
 private:
 	float m_flNextPunchTime;
@@ -163,6 +164,52 @@ void CMonsterSHLNormal::FaceEnemyFlat()
 	ChangeYaw(pev->yaw_speed);
 }
 
+void CMonsterSHLNormal::MoveToExactGroundedStopRange(CBaseEntity* pEnemy)
+{
+	if (pEnemy == nullptr)
+		return;
+
+	const float exactRange = SHL_NormalGroundedStopRange();
+
+	if (exactRange <= 1.0f)
+		return;
+
+	Vector fromPlayerToMonster = pev->origin - pEnemy->pev->origin;
+	fromPlayerToMonster.z = 0.0f;
+
+	if (fromPlayerToMonster.Length() <= 0.1f)
+	{
+		// Fallback if monster/player are on the exact same XY position.
+		MAKE_VECTORS(pEnemy->pev->angles);
+
+		fromPlayerToMonster = gpGlobals->v_forward * -1.0f;
+		fromPlayerToMonster.z = 0.0f;
+	}
+
+	fromPlayerToMonster = fromPlayerToMonster.Normalize();
+
+	Vector newOrigin = pEnemy->pev->origin + fromPlayerToMonster * exactRange;
+	newOrigin.z = pev->origin.z;
+
+	UTIL_SetOrigin(pev, newOrigin);
+
+	pev->velocity = g_vecZero;
+	pev->avelocity = g_vecZero;
+
+	FaceEnemyFlat();
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL Normal: exact grab range lock %.1f -> origin %.1f %.1f %.1f\n",
+			exactRange,
+			pev->origin.x,
+			pev->origin.y,
+			pev->origin.z);
+	}
+}
+
 void CMonsterSHLNormal::TryStartGroundedGrab()
 {
 	CBaseEntity* pEnemy = GetEnemyEntity();
@@ -173,7 +220,12 @@ void CMonsterSHLNormal::TryStartGroundedGrab()
 	if (SHL_GetPlayerStateId(pEnemy->edict()) != SHL_PLAYERSTATE_GROUNDED)
 		return;
 
-	if (DistanceToEnemy2D() > SHL_NormalGroundedStopRange())
+	const float exactRange = SHL_NormalGroundedStopRange();
+	const float dist = DistanceToEnemy2D();
+
+	// This is only the "allowed to start" zone now.
+	// Exact positioning happens after the scene starts.
+	if (dist > exactRange + 8.0f)
 		return;
 
 	if (gpGlobals->time < m_flNextGroundedGrabTryTime)
@@ -250,12 +302,14 @@ void CMonsterSHLNormal::PrescheduleThink()
 	{
 		const float dist = DistanceToEnemy2D();
 
-		if (dist <= SHL_NormalGroundedStopRange())
+		const float exactRange = SHL_NormalGroundedStopRange();
+
+		if (dist <= exactRange + 8.0f)
 		{
 			pev->velocity = g_vecZero;
 			pev->avelocity = g_vecZero;
 
-			FaceEnemyFlat();
+			MoveToExactGroundedStopRange(pEnemy);
 
 			m_movementActivity = ACT_IDLE;
 

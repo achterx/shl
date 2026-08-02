@@ -115,37 +115,59 @@ static int SHL_CameraAngleToShort(float angle)
 	return (int)(angle * 65536.0f / 360.0f) & 65535;
 }
 
+bool SHL_GetPlayerSceneCameraCenterAngles(edict_t* pEntity, float& pitch, float& yaw)
+{
+	pitch = 0.0f;
+	yaw = 0.0f;
+
+	if (pEntity == nullptr)
+		return false;
+
+	CBaseEntity* pOwner = SHL_GetPlayerSceneOwner(pEntity);
+
+	if (pOwner == nullptr)
+		return false;
+
+	// Match the low lying scene camera.
+	Vector from = pEntity->v.origin;
+	from.z += 10.0f;
+
+	// Aim at the NPC upper body / face area.
+	Vector to = pOwner->pev->origin;
+	to.z += 48.0f;
+
+	Vector delta = to - from;
+
+	if (delta.Length() <= 1.0f)
+		return false;
+
+	Vector angles = UTIL_VecToAngles(delta);
+
+	pitch = -angles.x;
+	yaw = angles.y;
+
+	while (yaw >= 360.0f)
+		yaw -= 360.0f;
+
+	while (yaw < 0.0f)
+		yaw += 360.0f;
+
+	if (pitch > 89.0f)
+		pitch = 89.0f;
+
+	if (pitch < -89.0f)
+		pitch = -89.0f;
+
+	return true;
+}
+
 static void SHL_GetCameraLookAnglesToSceneOwner(
 	edict_t* pEntity,
 	float& pitch,
 	float& yaw,
 	bool& hasTarget)
 {
-	pitch = 0.0f;
-	yaw = 0.0f;
-	hasTarget = false;
-
-	if (pEntity == nullptr)
-		return;
-
-	CBaseEntity* pOwner = SHL_GetPlayerSceneOwner(pEntity);
-
-	if (pOwner == nullptr)
-		return;
-
-	Vector from = pEntity->v.origin + pEntity->v.view_ofs;
-	Vector to = pOwner->pev->origin + Vector(0.0f, 0.0f, 48.0f);
-
-	Vector delta = to - from;
-
-	if (delta.Length() <= 1.0f)
-		return;
-
-	Vector angles = UTIL_VecToAngles(delta);
-
-	pitch = -angles.x;
-	yaw = angles.y;
-	hasTarget = true;
+	hasTarget = SHL_GetPlayerSceneCameraCenterAngles(pEntity, pitch, yaw);
 }
 
 static void SHL_UpdateCameraModeMessage(edict_t* pEntity)

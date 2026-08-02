@@ -9,5 +9,6 @@ int SHL_ClientCameraMode();
 bool SHL_ClientCameraActive();
 
 void SHL_ClientCameraApplyRefdef(struct ref_params_s* pparams);
+void SHL_ClientCameraClampUserCmdAngles(float* viewangles);
 
 #endif

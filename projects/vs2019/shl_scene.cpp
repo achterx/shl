@@ -53,6 +53,9 @@ struct shl_scene_slot_t
 	float escapeProgress;
 	float lastEscapeMashTime;
 
+	Vector sceneOrigin;
+	float sceneYaw;
+
 	EHANDLE hOwnerMonster;
 	EHANDLE hPlayerSceneActor;
 };
@@ -98,6 +101,15 @@ static float g_SHLMonsterRegrabBlockedUntil[SHL_MAX_MONSTER_SCENE_RECOVERY];
 
 static int SHL_GetMonsterRecoveryIndex(CBaseEntity* pMonster);
 static void SHL_CancelMonsterSceneRecoveryForDeath(int index);
+
+static float SHL_NormalizeYaw360(float yaw);
+
+static Vector SHL_ForwardRightOffset(
+	const Vector& origin,
+	float yaw,
+	float forwardOffset,
+	float rightOffset,
+	float zOffset);
 
 class CSHLMonsterRecoveryVisual : public CBaseAnimating
 {
@@ -436,6 +448,24 @@ static void SHL_ClearMonsterSceneRecoverySlot(int index)
 	if (index <= 0 || index >= SHL_MAX_MONSTER_SCENE_RECOVERY)
 		return;
 
+	CBaseEntity* pMonster =
+		(CBaseEntity*)g_SHLMonsterSceneRecovery[index].hMonster;
+
+	if (g_SHLMonsterSceneRecovery[index].active &&
+		pMonster != nullptr &&
+		pMonster->IsAlive() &&
+		pMonster->pev->deadflag == DEAD_NO)
+	{
+		pMonster->pev->effects = g_SHLMonsterSceneRecovery[index].oldEffects;
+		pMonster->pev->solid = g_SHLMonsterSceneRecovery[index].oldSolid;
+		pMonster->pev->origin = g_SHLMonsterSceneRecovery[index].holdOrigin;
+		pMonster->pev->angles = g_SHLMonsterSceneRecovery[index].holdAngles;
+		pMonster->pev->velocity = g_vecZero;
+		pMonster->pev->avelocity = g_vecZero;
+		pMonster->pev->framerate = 1.0f;
+		pMonster->pev->nextthink = gpGlobals->time + 0.01f;
+	}
+
 	CBaseEntity* pVisual =
 		(CBaseEntity*)g_SHLMonsterSceneRecovery[index].hVisual;
 
@@ -443,6 +473,8 @@ static void SHL_ClearMonsterSceneRecoverySlot(int index)
 	{
 		UTIL_Remove(pVisual);
 	}
+
+	// rest of your existing clear code continues here...
 
 	g_SHLMonsterSceneRecovery[index].active = false;
 	g_SHLMonsterSceneRecovery[index].hMonster = nullptr;
@@ -562,6 +594,128 @@ static CBaseEntity* SHL_CreateMonsterRecoveryVisual(
 	}
 
 	return pVisual;
+}
+
+static void SHL_SetGroundedGrabSceneAnchors(int index, CBaseMonster* pMonster, edict_t* pPlayer)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	if (pMonster == nullptr || pPlayer == nullptr)
+		return;
+
+	Vector delta = pMonster->pev->origin - pPlayer->v.origin;
+	delta.z = 0.0f;
+
+	float sceneYaw = 0.0f;
+
+	if (delta.Length() > 0.1f)
+	{
+		sceneYaw = UTIL_VecToYaw(delta);
+	}
+	else
+	{
+		sceneYaw = pPlayer->v.angles.y;
+	}
+
+	sceneYaw = SHL_NormalizeYaw360(sceneYaw);
+
+	const Vector sceneOrigin = pPlayer->v.origin;
+
+	g_SHLSceneSlots[index].sceneOrigin = sceneOrigin;
+	g_SHLSceneSlots[index].sceneYaw = sceneYaw;
+
+	const float monsterForward = SHL_NormalGroundedStopRange();
+	const float monsterRight = 0.0f;
+	const float monsterZ = 0.0f;
+	const float monsterYawOffset = 180.0f;
+
+	Vector monsterOrigin =
+		SHL_ForwardRightOffset(
+			sceneOrigin,
+			sceneYaw,
+			monsterForward,
+			monsterRight,
+			monsterZ);
+
+	UTIL_SetOrigin(pMonster->pev, monsterOrigin);
+
+	pMonster->pev->angles.x = 0.0f;
+	pMonster->pev->angles.y = SHL_NormalizeYaw360(sceneYaw + monsterYawOffset);
+	pMonster->pev->angles.z = 0.0f;
+	pMonster->pev->ideal_yaw = pMonster->pev->angles.y;
+
+	pMonster->pev->velocity = g_vecZero;
+	pMonster->pev->avelocity = g_vecZero;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: grounded grab anchors origin %.1f %.1f %.1f yaw %.1f monster %.1f %.1f %.1f monsterYaw %.1f\n",
+			sceneOrigin.x,
+			sceneOrigin.y,
+			sceneOrigin.z,
+			sceneYaw,
+			pMonster->pev->origin.x,
+			pMonster->pev->origin.y,
+			pMonster->pev->origin.z,
+			pMonster->pev->angles.y);
+	}
+}
+
+static void SHL_SetMonsterExactSceneRange(CBaseEntity* pMonster, edict_t* pPlayer, float exactRange)
+{
+	if (pMonster == nullptr || pPlayer == nullptr)
+		return;
+
+	if (exactRange <= 1.0f)
+		return;
+
+	Vector fromPlayerToMonster = pMonster->pev->origin - pPlayer->v.origin;
+	fromPlayerToMonster.z = 0.0f;
+
+	if (fromPlayerToMonster.Length() <= 0.1f)
+	{
+		MAKE_VECTORS(pPlayer->v.angles);
+
+		fromPlayerToMonster = gpGlobals->v_forward * -1.0f;
+		fromPlayerToMonster.z = 0.0f;
+	}
+
+	fromPlayerToMonster = fromPlayerToMonster.Normalize();
+
+	Vector newOrigin = pPlayer->v.origin + fromPlayerToMonster * exactRange;
+	newOrigin.z = pMonster->pev->origin.z;
+
+	UTIL_SetOrigin(pMonster->pev, newOrigin);
+
+	pMonster->pev->velocity = g_vecZero;
+	pMonster->pev->avelocity = g_vecZero;
+
+	Vector faceDelta = pPlayer->v.origin - pMonster->pev->origin;
+	faceDelta.z = 0.0f;
+
+	if (faceDelta.Length() > 0.1f)
+	{
+		pMonster->pev->angles.y = UTIL_VecToYaw(faceDelta);
+		pMonster->pev->ideal_yaw = pMonster->pev->angles.y;
+	}
+
+	pMonster->pev->angles.x = 0.0f;
+	pMonster->pev->angles.z = 0.0f;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: scene exact range set %.1f monster origin %.1f %.1f %.1f yaw %.1f\n",
+			exactRange,
+			pMonster->pev->origin.x,
+			pMonster->pev->origin.y,
+			pMonster->pev->origin.z,
+			pMonster->pev->angles.y);
+	}
 }
 
 static bool SHL_RecoverySequenceExists(CBaseAnimating* pAnimating, const char* pszSequenceName)
@@ -1297,6 +1451,9 @@ static void SHL_ClearSceneSlot(int index)
 
 	g_SHLSceneSlots[index].hOwnerMonster = nullptr;
 	g_SHLSceneSlots[index].hPlayerSceneActor = nullptr;
+
+	g_SHLSceneSlots[index].sceneOrigin = g_vecZero;
+	g_SHLSceneSlots[index].sceneYaw = 0.0f;
 }
 
 const char* SHL_SceneTypeName(int sceneType)
@@ -1363,6 +1520,25 @@ void SHL_InitSceneSystem()
 	}
 }
 
+bool SHL_GetPlayerSceneAnchor(edict_t* pPlayer, Vector& origin, float& yaw)
+{
+	const int index = SHL_GetSceneIndex(pPlayer);
+
+	origin = g_vecZero;
+	yaw = 0.0f;
+
+	if (index <= 0)
+		return false;
+
+	if (!g_SHLSceneSlots[index].active)
+		return false;
+
+	origin = g_SHLSceneSlots[index].sceneOrigin;
+	yaw = g_SHLSceneSlots[index].sceneYaw;
+
+	return true;
+}
+
 bool SHL_IsPlayerInScene(edict_t* pPlayer)
 {
 	const int index = SHL_GetSceneIndex(pPlayer);
@@ -1407,6 +1583,32 @@ bool SHL_IsMonsterSceneOwner(CBaseMonster* pMonster)
 	}
 
 	return false;
+}
+
+static Vector SHL_ForwardRightOffset(const Vector& origin, float yaw, float forwardOffset, float rightOffset, float zOffset)
+{
+	Vector angles = g_vecZero;
+	angles.y = yaw;
+
+	MAKE_VECTORS(angles);
+
+	Vector result = origin;
+	result = result + gpGlobals->v_forward * forwardOffset;
+	result = result + gpGlobals->v_right * rightOffset;
+	result.z += zOffset;
+
+	return result;
+}
+
+static float SHL_NormalizeYaw360(float yaw)
+{
+	while (yaw >= 360.0f)
+		yaw -= 360.0f;
+
+	while (yaw < 0.0f)
+		yaw += 360.0f;
+
+	return yaw;
 }
 
 int SHL_GetPlayerSceneType(edict_t* pPlayer)
@@ -1846,6 +2048,9 @@ bool SHL_TryStartGroundedGrabScene(CBaseMonster* pMonster, edict_t* pPlayer, flo
 	}
 
 	SHL_StartSceneSlot(pPlayer, SHL_SCENE_GROUNDED_GRAB, pMonster, duration);
+
+	SHL_SetGroundedGrabSceneAnchors(index, pMonster, pPlayer);
+
 	SHL_SetPlayerState(pPlayer, SHL_PLAYERSTATE_GRABBED);
 
 	if (SHL_DebugEnabled())

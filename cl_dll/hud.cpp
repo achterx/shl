@@ -30,6 +30,7 @@
 #include "demo_api.h"
 #include "vgui_ScorePanel.h"
 #include "../projects/vs2019/shl_client_camera.h"
+#include "../projects/vs2019/shl_client_scene_editor.h"
 
 hud_player_info_t g_PlayerInfoList[MAX_PLAYERS_HUD + 1];	// player info from the engine
 extra_player_info_t g_PlayerExtraInfo[MAX_PLAYERS_HUD + 1]; // additional player info sent directly to the client dll
@@ -111,6 +112,12 @@ int __MsgFunc_SHLInL(const char* pszName, int iSize, void* pbuf)
 					 ? "SHL: client input locked\n"
 					 : "SHL: client input unlocked\n");
 
+	return 1;
+}
+
+int __MsgFunc_SHLEdit(const char* pszName, int iSize, void* pbuf)
+{
+	SHL_ClientSceneEditorMessage(pszName, iSize, pbuf);
 	return 1;
 }
 
@@ -345,6 +352,8 @@ void CHud::Init()
 	HOOK_MESSAGE(SHLInL);
 	HOOK_MESSAGE(SHLEsc);
 	HOOK_MESSAGE(SHLCam);
+	HOOK_MESSAGE(SHLEdit);
+	SHL_ClientSceneEditorInit();
 	SHL_ClientCameraInit();
 
 
@@ -564,6 +573,7 @@ void CHud::VidInit()
 	m_StatusIcons.VidInit();
 	m_SHLEscapeBar.VidInit();
 	SHL_ClientCameraVidInit();
+	SHL_ClientSceneEditorVidInit();
 	GetClientVoiceMgr()->VidInit();
 }
 

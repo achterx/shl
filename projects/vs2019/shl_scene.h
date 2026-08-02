@@ -35,6 +35,9 @@ void SHL_EndPlayerScene(edict_t* pPlayer, int reason);
 void SHL_SceneThink();
 
 bool SHL_IsPlayerInScene(edict_t* pPlayer);
+bool SHL_IsPlayerScenePaused(edict_t* pPlayer);
+void SHL_SetPlayerScenePaused(edict_t* pPlayer, bool paused);
+bool SHL_TogglePlayerScenePaused(edict_t* pPlayer);
 int SHL_GetPlayerSceneType(edict_t* pPlayer);
 
 float SHL_GetPlayerSceneElapsed(edict_t* pPlayer);

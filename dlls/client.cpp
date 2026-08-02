@@ -53,7 +53,6 @@
 #include "../projects/vs2019/shl_control.h"
 #include "../projects/vs2019/shl_scene.h"
 #include "../projects/vs2019/shl_concussion.h"
-#include "../projects/vs2019/shl_scene.h"
 #include "../projects/vs2019/shl_scene_editor.h"
 
 DLL_GLOBAL unsigned int g_ulFrameCount;
@@ -363,10 +362,7 @@ void Host_Say(edict_t* pEntity, bool teamonly)
 	const char* cpSayTeam = "say_team";
 	const char* pcmd = CMD_ARGV(0);
 
-	if (SHL_SceneEditorClientCommand(pEntity, pcmd))
-	{
-		return;
-	}
+	
 
 	// We can get a raw string now, without the "say " prepended
 	if (CMD_ARGC() == 0)
@@ -521,6 +517,11 @@ void ClientCommand(edict_t* pEntity)
 {
 	const char* pcmd = CMD_ARGV(0);
 
+	if (SHL_SceneEditorClientCommand(pEntity, pcmd))
+	{
+		return;
+	}
+
 	if (SHL_ShouldBlockPlayerInput(pEntity))
 	{
 		if (
@@ -592,7 +593,11 @@ void ClientCommand(edict_t* pEntity)
 
 	if (FStrEq(pcmd, "shl_escape"))
 	{
-		SHL_AddSceneEscapeMash(pEntity);
+		if (!SHL_SceneEditorIsEnabled(pEntity))
+		{
+			SHL_AddSceneEscapeMash(pEntity);
+		}
+
 		return;
 	}
 

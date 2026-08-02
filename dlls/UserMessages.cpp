@@ -76,4 +76,6 @@ void LinkUserMessages()
 	gmsgSHLEscapeBar = REG_USER_MSG("SHLEsc", 2);
 
 	gmsgSHLCamera = REG_USER_MSG("SHLCam", 5);
+
+	gmsgSHLSceneEditor = REG_USER_MSG("SHLEdit", 1);
 }

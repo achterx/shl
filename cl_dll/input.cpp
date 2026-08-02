@@ -22,6 +22,7 @@
 #include "filesystem_utils.h"
 
 #include "../projects/vs2019/shl_client_camera.h"
+#include "../projects/vs2019/shl_client_scene_editor.h"
 
 
 extern bool g_iAlive;
@@ -823,7 +824,10 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 	if (GetClientVoiceMgr()->IsInSquelchMode())
 		cmd->buttons &= ~IN_ATTACK;
 	
-	SHL_ClientCheckEscapeMashFromButtons(g_SHLClientInputLocked);
+	if (!SHL_ClientSceneEditorEnabled())
+	{
+		SHL_ClientCheckEscapeMashFromButtons(g_SHLClientInputLocked);
+	}
 
 	
 
@@ -846,12 +850,20 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 	if (g_iAlive)
 	{
 		VectorCopy(viewangles, cmd->viewangles);
-		SHL_ClientCameraClampUserCmdAngles(cmd->viewangles);
+		if (!SHL_ClientSceneEditorEnabled())
+		{
+			SHL_ClientCameraClampUserCmdAngles(cmd->viewangles);
+		}
 		VectorCopy(viewangles, oldangles);
 	}
 	else
 	{
 		VectorCopy(oldangles, cmd->viewangles);
+	}
+
+	if (g_SHLClientInputLocked && SHL_ClientSceneEditorEnabled())
+	{
+		SHL_ClientSceneEditorMove(cmd);
 	}
 
 	if (g_SHLClientInputLocked)

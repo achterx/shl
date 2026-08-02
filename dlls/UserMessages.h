@@ -61,5 +61,6 @@ inline int gmsgSHLInputLock = 0;
 inline int gmsgSHLGroundedCam = 0;
 inline int gmsgSHLEscapeBar = 0;
 inline int gmsgSHLCamera = 0;
+inline int gmsgSHLSceneEditor = 0;
 
 void LinkUserMessages();

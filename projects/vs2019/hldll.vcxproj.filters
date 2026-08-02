@@ -704,5 +704,8 @@
     <ClInclude Include="shl_scene_editor.h">
       <Filter>Header Files\dlls</Filter>
     </ClInclude>
+    <ClInclude Include="shl_client_scene_editor.h">
+      <Filter>Header Files\dlls</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

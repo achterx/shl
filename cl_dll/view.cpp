@@ -21,6 +21,8 @@
 #include "Exports.h"
 
 #include "../projects/vs2019/shl_client_camera.h"
+#include "../projects/vs2019/shl_client_scene_editor.h"
+
 int CL_IsThirdPerson();
 void CL_CameraOffset(float* ofs);
 
@@ -844,6 +846,7 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	lasttime = pparams->time;
 
 	SHL_ClientCameraApplyRefdef(pparams);
+	SHL_ClientSceneEditorApplyRefdef(pparams);
 
 	v_origin = pparams->vieworg;
 	v_angles = pparams->viewangles;

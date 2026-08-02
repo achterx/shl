@@ -322,6 +322,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="..\..\pm_shared\pm_shared.h" />
     <ClInclude Include="..\..\public\interface.h" />
     <ClInclude Include="shl_camera.h" />
+    <ClInclude Include="shl_client_scene_editor.h" />
     <ClInclude Include="shl_concussion.h" />
     <ClInclude Include="shl_control.h" />
     <ClInclude Include="shl_defs.h" />

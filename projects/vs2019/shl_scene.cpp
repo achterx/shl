@@ -38,6 +38,9 @@ struct shl_scene_slot_t
 	float duration;
 	float lastTickTime;
 
+	bool paused;
+	float pauseStartTime;
+
 	bool startAnimationStarted;
 	bool loopAnimationStarted;
 
@@ -1457,6 +1460,9 @@ static void SHL_ClearSceneSlot(int index)
 	g_SHLSceneSlots[index].duration = 0.0f;
 	g_SHLSceneSlots[index].lastTickTime = 0.0f;
 
+	g_SHLSceneSlots[index].paused = false;
+	g_SHLSceneSlots[index].pauseStartTime = 0.0f;
+
 	g_SHLSceneSlots[index].startAnimationStarted = false;
 	g_SHLSceneSlots[index].loopAnimationStarted = false;
 
@@ -1574,6 +1580,116 @@ bool SHL_IsPlayerInScene(edict_t* pPlayer)
 		return false;
 
 	return true;
+}
+
+static void SHL_FreezeSceneAnimating(CBaseEntity* pEntity)
+{
+	if (pEntity == nullptr)
+		return;
+
+	CBaseAnimating* pAnimating = (CBaseAnimating*)pEntity;
+
+	pAnimating->pev->velocity = g_vecZero;
+	pAnimating->pev->avelocity = g_vecZero;
+	pAnimating->pev->framerate = 0.0f;
+}
+
+static void SHL_FreezeSceneSlotVisuals(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
+	{
+		SHL_FreezeSceneAnimating(
+			(CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
+	}
+
+	if (g_SHLSceneSlots[index].hOwnerMonster != nullptr)
+	{
+		SHL_FreezeSceneAnimating(
+			(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster);
+	}
+}
+
+bool SHL_IsPlayerScenePaused(edict_t* pPlayer)
+{
+	const int index = SHL_GetSceneIndex(pPlayer);
+
+	if (index <= 0)
+		return false;
+
+	if (!g_SHLSceneSlots[index].active)
+		return false;
+
+	return g_SHLSceneSlots[index].paused;
+}
+
+void SHL_SetPlayerScenePaused(edict_t* pPlayer, bool paused)
+{
+	const int index = SHL_GetSceneIndex(pPlayer);
+
+	if (index <= 0)
+		return;
+
+	if (!g_SHLSceneSlots[index].active)
+		return;
+
+	if (g_SHLSceneSlots[index].paused == paused)
+		return;
+
+	if (paused)
+	{
+		g_SHLSceneSlots[index].paused = true;
+		g_SHLSceneSlots[index].pauseStartTime = gpGlobals->time;
+		g_SHLSceneSlots[index].lastTickTime = gpGlobals->time;
+
+		SHL_FreezeSceneSlotVisuals(index);
+
+		if (SHL_DebugEnabled())
+			ALERT(at_console, "SHL: scene paused\n");
+
+		return;
+	}
+
+	const float pausedDuration =
+		gpGlobals->time - g_SHLSceneSlots[index].pauseStartTime;
+
+	g_SHLSceneSlots[index].paused = false;
+	g_SHLSceneSlots[index].pauseStartTime = 0.0f;
+
+	if (pausedDuration > 0.0f)
+	{
+		g_SHLSceneSlots[index].startTime += pausedDuration;
+		g_SHLSceneSlots[index].endTime += pausedDuration;
+		g_SHLSceneSlots[index].lastTickTime = gpGlobals->time;
+
+		if (g_SHLSceneSlots[index].climaxStartTime > 0.0f)
+			g_SHLSceneSlots[index].climaxStartTime += pausedDuration;
+
+		if (g_SHLSceneSlots[index].returnToLoopTime > 0.0f)
+			g_SHLSceneSlots[index].returnToLoopTime += pausedDuration;
+
+		if (g_SHLSceneSlots[index].npcClimaxStartTime > 0.0f)
+			g_SHLSceneSlots[index].npcClimaxStartTime += pausedDuration;
+	}
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: scene resumed pausedDuration=%.2f\n",
+			pausedDuration);
+	}
+}
+
+bool SHL_TogglePlayerScenePaused(edict_t* pPlayer)
+{
+	const bool paused = SHL_IsPlayerScenePaused(pPlayer);
+
+	SHL_SetPlayerScenePaused(pPlayer, !paused);
+
+	return !paused;
 }
 
 CBaseEntity* SHL_GetPlayerSceneOwner(edict_t* pPlayer)
@@ -1769,6 +1885,9 @@ bool SHL_AddSceneEscapeMash(edict_t* pPlayer)
 		return SHL_AddGroundedEscapeMash(pPlayer);
 	}
 
+	if (g_SHLSceneSlots[index].paused)
+		return false;
+
 	const shl_scene_profile_t* pProfile =
 		SHL_GetSceneProfile(g_SHLSceneSlots[index].sceneType);
 
@@ -1882,6 +2001,9 @@ static void SHL_StartSceneSlot(edict_t* pPlayer, int sceneType, CBaseMonster* pO
 	g_SHLSceneSlots[index].duration = duration;
 	g_SHLSceneSlots[index].endTime = gpGlobals->time + duration;
 	g_SHLSceneSlots[index].lastTickTime = gpGlobals->time;
+
+	g_SHLSceneSlots[index].paused = false;
+	g_SHLSceneSlots[index].pauseStartTime = 0.0f;
 
 	g_SHLSceneSlots[index].startAnimationStarted = false;
 	g_SHLSceneSlots[index].loopAnimationStarted = false;
@@ -3075,6 +3197,13 @@ void SHL_SceneThink()
 				SHL_EndPlayerScene(pPlayer, SHL_SCENE_END_MONSTER_DIED);
 				continue;
 			}
+		}
+
+		if (g_SHLSceneSlots[i].paused)
+		{
+			g_SHLSceneSlots[i].lastTickTime = gpGlobals->time;
+			SHL_FreezeSceneSlotVisuals(i);
+			continue;
 		}
 
 		SHL_PlaySceneStartAnimation(pPlayer, i);

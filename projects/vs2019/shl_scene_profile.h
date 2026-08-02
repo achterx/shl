@@ -34,6 +34,16 @@ struct shl_scene_profile_t
 	float monsterEscapeKnockdownDuration;
 	float monsterRecoveryGetupDuration;
 
+	float playerAnchorForward;
+	float playerAnchorRight;
+	float playerAnchorZ;
+	float playerAnchorYawOffset;
+
+	float monsterAnchorForward;
+	float monsterAnchorRight;
+	float monsterAnchorZ;
+	float monsterAnchorYawOffset;
+
 	float startSequenceDuration;
 
 	bool endsByTimer;

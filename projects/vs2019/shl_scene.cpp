@@ -10,6 +10,7 @@
 #include "shl_scene_profile.h"
 #include "shl_scene_actor.h"
 #include "../../dlls/UserMessages.h"
+#include "shl_monster_scene_profile.h"
 
 #include <string.h>
 
@@ -604,6 +605,12 @@ static void SHL_SetGroundedGrabSceneAnchors(int index, CBaseMonster* pMonster, e
 	if (pMonster == nullptr || pPlayer == nullptr)
 		return;
 
+	const shl_monster_scene_profile_t* pMonsterProfile =
+		SHL_GetMonsterSceneProfile(pMonster, SHL_SCENE_GROUNDED_GRAB);
+
+	if (pMonsterProfile == nullptr)
+		return;
+
 	Vector delta = pMonster->pev->origin - pPlayer->v.origin;
 	delta.z = 0.0f;
 
@@ -625,23 +632,35 @@ static void SHL_SetGroundedGrabSceneAnchors(int index, CBaseMonster* pMonster, e
 	g_SHLSceneSlots[index].sceneOrigin = sceneOrigin;
 	g_SHLSceneSlots[index].sceneYaw = sceneYaw;
 
-	const float monsterForward = SHL_NormalGroundedStopRange();
-	const float monsterRight = 0.0f;
-	const float monsterZ = 0.0f;
-	const float monsterYawOffset = 180.0f;
-
 	Vector monsterOrigin =
 		SHL_ForwardRightOffset(
 			sceneOrigin,
 			sceneYaw,
-			monsterForward,
-			monsterRight,
-			monsterZ);
+			pMonsterProfile->monsterAnchor.forward,
+			pMonsterProfile->monsterAnchor.right,
+			0.0f);
+
+	if (pMonsterProfile->monsterAnchor.dropToFloor)
+	{
+		monsterOrigin.z =
+			pMonster->pev->origin.z + pMonsterProfile->monsterAnchor.z;
+	}
+	else
+	{
+		monsterOrigin.z =
+			sceneOrigin.z + pMonsterProfile->monsterAnchor.z;
+	}
 
 	UTIL_SetOrigin(pMonster->pev, monsterOrigin);
 
+	if (pMonsterProfile->monsterAnchor.dropToFloor)
+	{
+		DROP_TO_FLOOR(ENT(pMonster->pev));
+	}
+
 	pMonster->pev->angles.x = 0.0f;
-	pMonster->pev->angles.y = SHL_NormalizeYaw360(sceneYaw + monsterYawOffset);
+	pMonster->pev->angles.y =
+		SHL_NormalizeYaw360(sceneYaw + pMonsterProfile->monsterAnchor.yawOffset);
 	pMonster->pev->angles.z = 0.0f;
 	pMonster->pev->ideal_yaw = pMonster->pev->angles.y;
 
@@ -652,7 +671,8 @@ static void SHL_SetGroundedGrabSceneAnchors(int index, CBaseMonster* pMonster, e
 	{
 		ALERT(
 			at_console,
-			"SHL: grounded grab anchors origin %.1f %.1f %.1f yaw %.1f monster %.1f %.1f %.1f monsterYaw %.1f\n",
+			"SHL: monster scene anchors profile=%s scene %.1f %.1f %.1f yaw %.1f monster %.1f %.1f %.1f monsterYaw %.1f offsets %.1f %.1f %.1f %.1f\n",
+			pMonsterProfile->debugName,
 			sceneOrigin.x,
 			sceneOrigin.y,
 			sceneOrigin.z,
@@ -660,7 +680,11 @@ static void SHL_SetGroundedGrabSceneAnchors(int index, CBaseMonster* pMonster, e
 			pMonster->pev->origin.x,
 			pMonster->pev->origin.y,
 			pMonster->pev->origin.z,
-			pMonster->pev->angles.y);
+			pMonster->pev->angles.y,
+			pMonsterProfile->monsterAnchor.forward,
+			pMonsterProfile->monsterAnchor.right,
+			pMonsterProfile->monsterAnchor.z,
+			pMonsterProfile->monsterAnchor.yawOffset);
 	}
 }
 
@@ -1809,22 +1833,30 @@ bool SHL_AddSceneEscapeMash(edict_t* pPlayer)
 
 		if (pOwnerMonster != nullptr)
 		{
-			const bool wantsDedicatedEscapeRecovery =
-				pProfile->monsterEscapeKnockdownSequence != nullptr &&
-				pProfile->monsterEscapeKnockdownSequence[0] != '\0' &&
-				pProfile->monsterEscapeKnockdownDuration > 0.0f &&
-				pProfile->monsterRecoveryGetupSequence != nullptr &&
-				pProfile->monsterRecoveryGetupSequence[0] != '\0' &&
-				pProfile->monsterRecoveryGetupDuration > 0.0f;
+			const shl_monster_scene_profile_t* pMonsterProfile =
+				SHL_GetMonsterSceneProfile(
+					pOwnerMonster,
+					g_SHLSceneSlots[index].sceneType);
 
-			SHL_StartMonsterSceneRecoveryEx(
-				pOwnerMonster,
-				pProfile->monsterNpcClimaxSequence,
-				wantsDedicatedEscapeRecovery ? 0.0f : SHL_NormalEscapeRecoveryDuration(),
-				pProfile->monsterEscapeKnockdownSequence,
-				pProfile->monsterEscapeKnockdownDuration,
-				pProfile->monsterRecoveryGetupSequence,
-				pProfile->monsterRecoveryGetupDuration);
+			if (pMonsterProfile != nullptr)
+			{
+				const bool wantsDedicatedEscapeRecovery =
+					pMonsterProfile->monsterEscapeKnockdownSequence != nullptr &&
+					pMonsterProfile->monsterEscapeKnockdownSequence[0] != '\0' &&
+					pMonsterProfile->monsterEscapeKnockdownDuration > 0.0f &&
+					pMonsterProfile->monsterRecoveryGetupSequence != nullptr &&
+					pMonsterProfile->monsterRecoveryGetupSequence[0] != '\0' &&
+					pMonsterProfile->monsterRecoveryGetupDuration > 0.0f;
+
+				SHL_StartMonsterSceneRecoveryEx(
+					pOwnerMonster,
+					pMonsterProfile->monsterNpcClimaxSequence,
+					wantsDedicatedEscapeRecovery ? 0.0f : SHL_NormalEscapeRecoveryDuration(),
+					pMonsterProfile->monsterEscapeKnockdownSequence,
+					pMonsterProfile->monsterEscapeKnockdownDuration,
+					pMonsterProfile->monsterRecoveryGetupSequence,
+					pMonsterProfile->monsterRecoveryGetupDuration);
+			}
 
 			SHL_SetMonsterRegrabCooldown(
 				pOwnerMonster,
@@ -1882,13 +1914,21 @@ static void SHL_StartSceneSlot(edict_t* pPlayer, int sceneType, CBaseMonster* pO
 	g_SHLSceneSlots[index].hOwnerMonster = pOwnerMonster;
 	g_SHLSceneSlots[index].hPlayerSceneActor = nullptr;
 
-	if (sceneType == SHL_SCENE_GROUNDED_GRAB)
+	if (pOwnerMonster != nullptr)
 	{
-		CBaseEntity* pActor = SHL_CreatePlayerSceneActor(
-			pPlayer,
-			"models/shl/player_grounded_scene.mdl");
+		const shl_monster_scene_profile_t* pMonsterProfile =
+			SHL_GetMonsterSceneProfile(pOwnerMonster, sceneType);
 
-		g_SHLSceneSlots[index].hPlayerSceneActor = pActor;
+		if (pMonsterProfile != nullptr &&
+			pMonsterProfile->playerSceneActorModel != nullptr &&
+			pMonsterProfile->playerSceneActorModel[0] != '\0')
+		{
+			CBaseEntity* pActor = SHL_CreatePlayerSceneActor(
+				pPlayer,
+				pMonsterProfile->playerSceneActorModel);
+
+			g_SHLSceneSlots[index].hPlayerSceneActor = pActor;
+		}
 	}
 }
 
@@ -2271,25 +2311,32 @@ static void SHL_StartSceneClimaxAnimation(edict_t* pPlayer, int index)
 	g_SHLSceneSlots[index].returnToLoopTime =
 		gpGlobals->time + climaxDuration + returnDelay;
 
-	if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
+	const shl_monster_scene_profile_t* pMonsterProfile =
+		SHL_GetMonsterSceneProfile(
+			(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster,
+			g_SHLSceneSlots[index].sceneType);
+
+	if (pMonsterProfile != nullptr &&
+		g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
 	{
 		CBaseAnimating* pPlayerSceneActor =
 			(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
 
 		SHL_TryPlaySequence(
 			pPlayerSceneActor,
-			pProfile->playerClimaxSequence,
+			pMonsterProfile->playerClimaxSequence,
 			"player scene actor");
 	}
 
-	if (g_SHLSceneSlots[index].hOwnerMonster != nullptr)
+	if (pMonsterProfile != nullptr &&
+		g_SHLSceneSlots[index].hOwnerMonster != nullptr)
 	{
 		CBaseAnimating* pOwnerMonster =
 			(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster);
 
 		SHL_TryPlaySequence(
 			pOwnerMonster,
-			pProfile->monsterClimaxSequence,
+			pMonsterProfile->monsterClimaxSequence,
 			"monster player climax");
 	}
 
@@ -2338,25 +2385,32 @@ static void SHL_StartNpcClimaxAnimation(edict_t* pPlayer, int index)
 	g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax = false;
 	g_SHLSceneSlots[index].returnToLoopTime = 0.0f;
 
-	if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
+	const shl_monster_scene_profile_t* pMonsterProfile =
+		SHL_GetMonsterSceneProfile(
+			(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster,
+			g_SHLSceneSlots[index].sceneType);
+
+	if (pMonsterProfile != nullptr &&
+		g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
 	{
 		CBaseAnimating* pPlayerSceneActor =
 			(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
 
 		SHL_TryPlaySequence(
 			pPlayerSceneActor,
-			pProfile->playerClimaxSequence,
+			pMonsterProfile->playerClimaxSequence,
 			"player scene actor");
 	}
 
-	if (g_SHLSceneSlots[index].hOwnerMonster != nullptr)
+	if (pMonsterProfile != nullptr &&
+		g_SHLSceneSlots[index].hOwnerMonster != nullptr)
 	{
 		CBaseAnimating* pOwnerMonster =
 			(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster);
 
 		SHL_TryPlaySequence(
 			pOwnerMonster,
-			pProfile->monsterNpcClimaxSequence,
+			pMonsterProfile->monsterNpcClimaxSequence,
 			"monster npc climax");
 	}
 
@@ -2659,26 +2713,33 @@ static void SHL_ThinkPlayerClimaxReturn(edict_t* pPlayer, int index)
 
 	if (pProfile->supportsSceneAnimation)
 	{
-		if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
+		const shl_monster_scene_profile_t* pMonsterProfile =
+			SHL_GetMonsterSceneProfile(
+				(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster,
+				g_SHLSceneSlots[index].sceneType);
+
+		if (pMonsterProfile != nullptr &&
+			g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
 		{
 			CBaseAnimating* pPlayerSceneActor =
 				(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
 
 			SHL_TryPlaySequence(
 				pPlayerSceneActor,
-				pProfile->playerLoopSequence,
+				pMonsterProfile->playerClimaxSequence,
 				"player scene actor");
 		}
 
-		if (g_SHLSceneSlots[index].hOwnerMonster != nullptr)
+		if (pMonsterProfile != nullptr &&
+			g_SHLSceneSlots[index].hOwnerMonster != nullptr)
 		{
 			CBaseAnimating* pOwnerMonster =
 				(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster);
 
 			SHL_TryPlaySequence(
 				pOwnerMonster,
-				pProfile->monsterLoopSequence,
-				"monster");
+				pMonsterProfile->monsterClimaxSequence,
+				"monster player climax");
 		}
 	}
 
@@ -2715,28 +2776,33 @@ static void SHL_PlaySceneStartAnimation(edict_t* pPlayer, int index)
 		if (!g_SHLSceneSlots[index].loopAnimationStarted &&
 			!g_SHLSceneSlots[index].climaxAnimationStarted)
 		{
-			if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
+			const shl_monster_scene_profile_t* pMonsterProfile =
+				SHL_GetMonsterSceneProfile(
+					(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster,
+					g_SHLSceneSlots[index].sceneType);
+
+			if (pMonsterProfile != nullptr &&
+				g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
 			{
 				CBaseAnimating* pPlayerSceneActor =
 					(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
 
-				SHL_HoldSequence(
+				SHL_TryPlaySequence(
 					pPlayerSceneActor,
-					pProfile->playerStartSequence,
-					"player scene actor",
-					false);
+					pMonsterProfile->playerClimaxSequence,
+					"player scene actor");
 			}
 
-			if (g_SHLSceneSlots[index].hOwnerMonster != nullptr)
+			if (pMonsterProfile != nullptr &&
+				g_SHLSceneSlots[index].hOwnerMonster != nullptr)
 			{
 				CBaseAnimating* pOwnerMonster =
 					(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster);
 
-				SHL_HoldSequence(
+				SHL_TryPlaySequence(
 					pOwnerMonster,
-					pProfile->monsterStartSequence,
-					"monster",
-					false);
+					pMonsterProfile->monsterNpcClimaxSequence,
+					"monster npc climax");
 			}
 		}
 

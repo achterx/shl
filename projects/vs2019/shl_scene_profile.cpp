@@ -35,6 +35,18 @@ static const shl_scene_profile_t g_SHLSceneProfileNone =
 		0.0f,
 		0.0f,
 
+		// Player anchor offsets.
+		0.0f,
+		0.0f,
+		0.0f,
+		0.0f,
+
+		// Monster anchor offsets.
+		0.0f,
+		0.0f,
+		0.0f,
+		0.0f,
+
 		0.0f,
 
 		true,
@@ -74,6 +86,18 @@ static const shl_scene_profile_t g_SHLSceneProfileDebug =
 		0.0f,
 		0.0f,
 
+		// Player anchor offsets.
+		0.0f,
+		0.0f,
+		0.0f,
+		0.0f,
+
+		// Monster anchor offsets.
+		0.0f,
+		0.0f,
+		0.0f,
+		0.0f,
+
 		0.0f,
 
 		true,
@@ -108,12 +132,22 @@ static const shl_scene_profile_t g_SHLSceneProfileGroundedGrab =
 		"shl_grab_climax",
 		"shl_npc_climax",
 
-		
-
 		"shl_escape_knockdown",
 		"shl_recovery_getup",
 		4.31f,
 		1.60f,
+
+		// Player anchor offsets.
+		0.0f,
+		0.0f,
+		0.0f,
+		0.0f,
+
+		// Monster anchor offsets.
+		8.0f,
+		0.0f,
+		0.0f,
+		180.0f,
 
 		0.8f,
 

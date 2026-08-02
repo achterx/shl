@@ -19,6 +19,7 @@
 #include "game.h"
 #include "filesystem_utils.h"
 #include "shl_skill.h"
+#include "../projects/vs2019/shl_scene_editor.h"
 
 cvar_t displaysoundlist = {"displaysoundlist", "0"};
 cvar_t shl_marker = {"shl_marker", "2025", FCVAR_SERVER};

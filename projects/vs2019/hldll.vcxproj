@@ -225,11 +225,13 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="shl_concussion.cpp" />
     <ClCompile Include="shl_control.cpp" />
     <ClCompile Include="shl_defs.cpp" />
+    <ClCompile Include="shl_monster_scene_profile.cpp" />
     <ClCompile Include="shl_npc_recovery.cpp" />
     <ClCompile Include="shl_player_state.cpp" />
     <ClCompile Include="shl_saveguard.cpp" />
     <ClCompile Include="shl_scene.cpp" />
     <ClCompile Include="shl_scene_actor.cpp" />
+    <ClCompile Include="shl_scene_editor.cpp" />
     <ClCompile Include="shl_scene_profile.cpp" />
     <ClCompile Include="shl_skill.cpp" />
   </ItemGroup>
@@ -323,11 +325,13 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="shl_concussion.h" />
     <ClInclude Include="shl_control.h" />
     <ClInclude Include="shl_defs.h" />
+    <ClInclude Include="shl_monster_scene_profile.h" />
     <ClInclude Include="shl_npc_recovery.h" />
     <ClInclude Include="shl_player_state.h" />
     <ClInclude Include="shl_saveguard.h" />
     <ClInclude Include="shl_scene.h" />
     <ClInclude Include="shl_scene_actor.h" />
+    <ClInclude Include="shl_scene_editor.h" />
     <ClInclude Include="shl_scene_profile.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

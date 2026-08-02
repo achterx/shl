@@ -54,6 +54,7 @@
 #include "../projects/vs2019/shl_scene.h"
 #include "../projects/vs2019/shl_concussion.h"
 #include "../projects/vs2019/shl_scene.h"
+#include "../projects/vs2019/shl_scene_editor.h"
 
 DLL_GLOBAL unsigned int g_ulFrameCount;
 
@@ -361,6 +362,11 @@ void Host_Say(edict_t* pEntity, bool teamonly)
 	const char* cpSay = "say";
 	const char* cpSayTeam = "say_team";
 	const char* pcmd = CMD_ARGV(0);
+
+	if (SHL_SceneEditorClientCommand(pEntity, pcmd))
+	{
+		return;
+	}
 
 	// We can get a raw string now, without the "say " prepended
 	if (CMD_ARGC() == 0)
@@ -1105,6 +1111,7 @@ void StartFrame()
 
 	SHL_SaveGuardThink();
 	SHL_SceneThink();
+	SHL_SceneEditorThink();
 
 	const bool allowBunnyHopping = sv_allowbunnyhopping.value != 0;
 

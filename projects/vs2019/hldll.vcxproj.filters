@@ -405,6 +405,12 @@
     <ClCompile Include="shl_camera.cpp">
       <Filter>Source Files\dlls</Filter>
     </ClCompile>
+    <ClCompile Include="shl_monster_scene_profile.cpp">
+      <Filter>Source Files\dlls</Filter>
+    </ClCompile>
+    <ClCompile Include="shl_scene_editor.cpp">
+      <Filter>Source Files\dlls</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dlls\doors.h">
@@ -690,6 +696,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="shl_camera.h">
+      <Filter>Header Files\dlls</Filter>
+    </ClInclude>
+    <ClInclude Include="shl_monster_scene_profile.h">
+      <Filter>Header Files\dlls</Filter>
+    </ClInclude>
+    <ClInclude Include="shl_scene_editor.h">
       <Filter>Header Files\dlls</Filter>
     </ClInclude>
   </ItemGroup>

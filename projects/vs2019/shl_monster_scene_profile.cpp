@@ -30,10 +30,17 @@ static const shl_monster_scene_profile_t g_SHLNormalGroundedGrab =
 		// Player scene actor anchor.
 		{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false}, // player
 
-		// Monster anchor.
-		// Smaller forward = more centered over player.
-		{8.0f, 0.0f, 0.0f, 0.0f, 180.0f, true}
-};
+		// Current slot0 / owner monster anchor.
+		// Replace these numbers with your final editor-tuned values.
+		{8.0f, 0.0f, 0.0f, 0.0f, 180.0f, false}, // monsterAnchor legacy slot0
+
+		// Future multi-NPC slots. Not used by gameplay yet.
+		{
+			{8.0f, 0.0f, 0.0f, 0.0f, 180.0f, false},  // slot0 owner
+			{8.0f, 28.0f, 0.0f, 0.0f, 180.0f, false}, // slot1 reserved
+			{8.0f, -28.0f, 0.0f, 0.0f, 180.0f, false} // slot2 reserved
+		}
+   };
 
 const shl_monster_scene_profile_t* SHL_GetMonsterSceneProfile(
 	CBaseEntity* pMonster,
@@ -54,4 +61,19 @@ const shl_monster_scene_profile_t* SHL_GetMonsterSceneProfile(
 	}
 
 	return nullptr;
+}
+
+bool SHL_GetMonsterSceneSlotAnchor(
+	const shl_monster_scene_profile_t* pProfile,
+	int slot,
+	shl_scene_actor_anchor_t& outAnchor)
+{
+	if (pProfile == nullptr)
+		return false;
+
+	if (slot < 0 || slot >= SHL_MONSTER_SCENE_MAX_SLOTS)
+		return false;
+
+	outAnchor = pProfile->monsterSlotAnchors[slot];
+	return true;
 }

@@ -1684,6 +1684,38 @@ void TeamFortressViewport::UpdateCursorState()
 	App::getInstance()->setCursorOveride(App::getInstance()->getScheme()->getCursor(Scheme::scu_none));
 }
 
+void SHL_VGuiSetEditorCursorVisible(bool visible)
+{
+	if (visible)
+	{
+		g_iVisibleMouse = true;
+
+		App::getInstance()->setCursorOveride(
+			App::getInstance()->getScheme()->getCursor(Scheme::scu_arrow));
+
+		return;
+	}
+
+	if (gViewPort != nullptr)
+	{
+		gViewPort->UpdateCursorState();
+		return;
+	}
+
+	g_iVisibleMouse = false;
+
+	App::getInstance()->setCursorOveride(
+		App::getInstance()->getScheme()->getCursor(Scheme::scu_none));
+}
+
+void SHL_VGuiGetEditorCursorPos(int& x, int& y)
+{
+	x = 0;
+	y = 0;
+
+	App::getInstance()->getCursorPos(x, y);
+}
+
 void TeamFortressViewport::UpdateHighlights()
 {
 	if (m_pCurrentCommandMenu)

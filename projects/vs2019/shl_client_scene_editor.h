@@ -16,5 +16,6 @@ void SHL_ClientSceneEditorApplyRefdef(struct ref_params_s* pparams);
 void SHL_ClientSceneEditorMouse(struct usercmd_s* cmd);
 void SHL_ClientSceneEditorCursorCommand();
 bool SHL_ClientSceneEditorCursorEnabled();
+void SHL_ClientSceneEditorButtons(struct usercmd_s* cmd);
 
 #endif

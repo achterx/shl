@@ -13,7 +13,7 @@
 #define SHL_SCENE_EDITOR_AXIS_LENGTH 32.0f
 #define SHL_SCENE_EDITOR_DRAW_INTERVAL 0.05f
 
-#define SHL_SCENE_EDITOR_MAX_TARGETS 3
+#define SHL_SCENE_EDITOR_MAX_TARGETS 4
 
 enum SHLSceneEditorAxis
 {
@@ -136,52 +136,6 @@ static int SHL_SceneEditorTargetToIndex(int target)
 	}
 
 	return -1;
-}
-
-static bool SHL_SceneEditorGetBaseAnchorForTarget(
-	edict_t* pPlayer,
-	int target,
-	shl_scene_actor_anchor_t& outAnchor)
-{
-	outAnchor.forward = 0.0f;
-	outAnchor.right = 0.0f;
-	outAnchor.z = 0.0f;
-	outAnchor.pitchOffset = 0.0f;
-	outAnchor.yawOffset = 0.0f;
-	outAnchor.dropToFloor = false;
-
-	if (pPlayer == nullptr)
-		return false;
-
-	if (!SHL_IsPlayerInScene(pPlayer))
-		return false;
-
-	CBaseEntity* pOwner = SHL_GetPlayerSceneOwner(pPlayer);
-
-	if (pOwner == nullptr)
-		return false;
-
-	const int sceneType = SHL_GetPlayerSceneType(pPlayer);
-
-	const shl_monster_scene_profile_t* pMonsterProfile =
-		SHL_GetMonsterSceneProfile(pOwner, sceneType);
-
-	if (pMonsterProfile == nullptr)
-		return false;
-
-	if (target == SHL_SCENE_EDITOR_TARGET_PLAYER)
-	{
-		outAnchor = pMonsterProfile->playerAnchor;
-		return true;
-	}
-
-	if (target == SHL_SCENE_EDITOR_TARGET_SLOT0)
-	{
-		outAnchor = pMonsterProfile->monsterAnchor;
-		return true;
-	}
-
-	return false;
 }
 
 bool SHL_SceneEditorResolveAnchor(
@@ -330,7 +284,7 @@ static void SHL_SceneEditorSetTarget(edict_t* pPlayer, const char* pszTarget)
 	{
 		ALERT(
 			at_console,
-			"SHL Scene Editor: unknown target '%s'. Use player, slot0-slot7.\n",
+			"SHL Scene Editor: unknown target '%s'. Use player, slot0-slot2.\n",
 			pszTarget != nullptr ? pszTarget : "");
 		return;
 	}
@@ -341,6 +295,55 @@ static void SHL_SceneEditorSetTarget(edict_t* pPlayer, const char* pszTarget)
 		at_console,
 		"SHL Scene Editor: target=%s\n",
 		SHL_SceneEditorTargetName(g_SHLSceneEditorStates[index].target));
+}
+
+static bool SHL_SceneEditorGetBaseAnchor(
+	edict_t* pPlayer,
+	int target,
+	shl_scene_actor_anchor_t& outAnchor)
+{
+	if (pPlayer == nullptr)
+		return false;
+
+	const int sceneType = SHL_GetPlayerSceneType(pPlayer);
+
+	if (sceneType == SHL_SCENE_NONE)
+		return false;
+
+	CBaseEntity* pOwner = SHL_GetPlayerSceneOwner(pPlayer);
+
+	if (pOwner == nullptr)
+		return false;
+
+	const shl_monster_scene_profile_t* pProfile =
+		SHL_GetMonsterSceneProfile(pOwner, sceneType);
+
+	if (pProfile == nullptr)
+		return false;
+
+	if (target == SHL_SCENE_EDITOR_TARGET_PLAYER)
+	{
+		outAnchor = pProfile->playerAnchor;
+		return true;
+	}
+
+	if (target >= SHL_SCENE_EDITOR_TARGET_SLOT0 &&
+		target <= SHL_SCENE_EDITOR_TARGET_SLOT2)
+	{
+		const int slot = target - SHL_SCENE_EDITOR_TARGET_SLOT0;
+
+		if (!SHL_GetMonsterSceneSlotAnchor(
+				pProfile,
+				slot,
+				outAnchor))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	return false;
 }
 
 static void SHL_SceneEditorNudge(
@@ -371,26 +374,18 @@ static void SHL_SceneEditorNudge(
 		return;
 	}
 
-	if (target != SHL_SCENE_EDITOR_TARGET_SLOT0)
-	{
-		ALERT(
-			at_console,
-			"SHL Scene Editor: only slot0 is editable right now. Current target=%s\n",
-			SHL_SceneEditorTargetName(target));
-		return;
-	}
-
 	if (!g_SHLSceneEditorStates[playerIndex].anchorOverrideActive[targetIndex])
 	{
 		shl_scene_actor_anchor_t baseAnchor;
 
-		if (!SHL_SceneEditorGetBaseAnchorForTarget(pPlayer, target, baseAnchor))
+		if (!SHL_SceneEditorGetBaseAnchor(pPlayer, target, baseAnchor))
 		{
 			ALERT(at_console, "SHL Scene Editor: no active editable scene/profile.\n");
 			return;
 		}
 
 		g_SHLSceneEditorStates[playerIndex].anchorOverride[targetIndex] = baseAnchor;
+		g_SHLSceneEditorStates[playerIndex].anchorOverride[targetIndex].dropToFloor = false;
 		g_SHLSceneEditorStates[playerIndex].anchorOverrideActive[targetIndex] = true;
 	}
 
@@ -503,6 +498,106 @@ static void SHL_SceneEditorMouseDrag(edict_t* pPlayer, float mouseDx, float mous
 	default:
 		break;
 	}
+}
+
+static void SHL_SceneEditorCycleAxis(edict_t* pPlayer, int direction)
+{
+	if (pPlayer == nullptr)
+		return;
+
+	const int playerIndex = SHL_SceneEditorPlayerIndex(pPlayer);
+
+	if (playerIndex <= 0)
+		return;
+
+	int axis = g_SHLSceneEditorStates[playerIndex].axis;
+
+	if (axis < SHL_SCENE_EDITOR_AXIS_FORWARD ||
+		axis > SHL_SCENE_EDITOR_AXIS_PITCH)
+	{
+		axis = SHL_SCENE_EDITOR_AXIS_FORWARD;
+	}
+
+	if (direction >= 0)
+	{
+		axis++;
+
+		if (axis > SHL_SCENE_EDITOR_AXIS_PITCH)
+			axis = SHL_SCENE_EDITOR_AXIS_FORWARD;
+	}
+	else
+	{
+		axis--;
+
+		if (axis < SHL_SCENE_EDITOR_AXIS_FORWARD)
+			axis = SHL_SCENE_EDITOR_AXIS_PITCH;
+	}
+
+	g_SHLSceneEditorStates[playerIndex].axis = axis;
+
+	ALERT(
+		at_console,
+		"SHL Scene Editor: selected gizmo axis=%s\n",
+		SHL_SceneEditorAxisName(axis));
+}
+
+static CBaseMonster* SHL_SceneEditorFindAimedMonster(edict_t* pPlayer)
+{
+	if (pPlayer == nullptr)
+		return nullptr;
+
+	Vector vecSrc = pPlayer->v.origin + pPlayer->v.view_ofs;
+
+	MAKE_VECTORS(pPlayer->v.v_angle);
+
+	Vector vecEnd = vecSrc + gpGlobals->v_forward * 2048.0f;
+
+	TraceResult tr;
+	UTIL_TraceLine(vecSrc, vecEnd, dont_ignore_monsters, pPlayer, &tr);
+
+	if (tr.pHit == nullptr)
+		return nullptr;
+
+	CBaseEntity* pEntity = CBaseEntity::Instance(tr.pHit);
+
+	if (pEntity == nullptr)
+		return nullptr;
+
+	return pEntity->MyMonsterPointer();
+}
+
+static void SHL_SceneEditorJoinAimedMonster(edict_t* pPlayer, int slot)
+{
+	if (pPlayer == nullptr)
+		return;
+
+	if (!SHL_IsPlayerInScene(pPlayer))
+	{
+		ALERT(at_console, "SHL Scene Editor: no active scene.\n");
+		return;
+	}
+
+	CBaseMonster* pMonster = SHL_SceneEditorFindAimedMonster(pPlayer);
+
+	if (pMonster == nullptr)
+	{
+		ALERT(at_console, "SHL Scene Editor: aim at a monster first.\n");
+		return;
+	}
+
+	if (!SHL_TryAddMonsterToPlayerSceneSlot(pPlayer, pMonster, slot))
+	{
+		ALERT(
+			at_console,
+			"SHL Scene Editor: failed to add aimed monster to slot%d.\n",
+			slot);
+		return;
+	}
+
+	ALERT(
+		at_console,
+		"SHL Scene Editor: added aimed monster to slot%d.\n",
+		slot);
 }
 
 bool SHL_SceneEditorClientCommand(edict_t* pPlayer, const char* pszCommand)
@@ -665,6 +760,45 @@ bool SHL_SceneEditorClientCommand(edict_t* pPlayer, const char* pszCommand)
 		return true;
 	}
 
+	if (FStrEq(pszCommand, "shl_sceneedit_axiscycle"))
+	{
+		const char* pszDir = CMD_ARGV(1);
+
+		int direction = 1;
+
+		if (pszDir != nullptr && pszDir[0] != '\0')
+		{
+			if (FStrEq(pszDir, "-1") || FStrEq(pszDir, "back") || FStrEq(pszDir, "prev"))
+				direction = -1;
+		}
+
+		SHL_SceneEditorCycleAxis(pPlayer, direction);
+		return true;
+	}
+
+	if (FStrEq(pszCommand, "shl_sceneedit_join"))
+	{
+		const char* pszSlot = CMD_ARGV(1);
+
+		int slot = 1;
+
+		if (pszSlot != nullptr && pszSlot[0] != '\0')
+		{
+			if (FStrEq(pszSlot, "slot1") || FStrEq(pszSlot, "1"))
+				slot = 1;
+			else if (FStrEq(pszSlot, "slot2") || FStrEq(pszSlot, "2"))
+				slot = 2;
+			else
+			{
+				ALERT(at_console, "Usage: shl_sceneedit_join slot1/slot2\n");
+				return true;
+			}
+		}
+
+		SHL_SceneEditorJoinAimedMonster(pPlayer, slot);
+		return true;
+	}
+
 	return false;
 }
 
@@ -693,6 +827,27 @@ static void SHL_SceneEditorSendDLight(
 	WRITE_BYTE(life);
 	WRITE_BYTE(decay);
 	MESSAGE_END();
+}
+
+static Vector SHL_SceneEditorRotateLocalPivot(
+	float pitch,
+	float yaw,
+	const Vector& localPivot)
+{
+	Vector angles = g_vecZero;
+	angles.x = pitch;
+	angles.y = yaw;
+	angles.z = 0.0f;
+
+	MAKE_VECTORS(angles);
+
+	Vector result = g_vecZero;
+
+	result = result + gpGlobals->v_forward * localPivot.x;
+	result = result + gpGlobals->v_right * localPivot.y;
+	result = result + gpGlobals->v_up * localPivot.z;
+
+	return result;
 }
 
 static Vector SHL_SceneEditorForwardRightOffset(
@@ -748,27 +903,47 @@ static bool SHL_SceneEditorGetTargetOriginYaw(
 		if (pOwner == nullptr)
 			return false;
 
-		origin = pOwner->pev->origin;
-		origin.z += 64.0f;
+		// Must match the pivot constants in shl_scene.cpp.
+		Vector localPivot = g_vecZero;
+		localPivot.x = 32.0f;
+		localPivot.y = 0.0f;
+		localPivot.z = 32.0f;
+
+		Vector rotatedPivot =
+			SHL_SceneEditorRotateLocalPivot(
+				-pOwner->pev->angles.x,
+				pOwner->pev->angles.y,
+				localPivot);
+
+		origin = pOwner->pev->origin + rotatedPivot;
 		yaw = pOwner->pev->angles.y;
 		return true;
 	}
 
-	// Future multi-actor slots.
-	// For now, draw reserved slots near the scene anchor so the selector works.
 	if (target >= SHL_SCENE_EDITOR_TARGET_SLOT1 &&
 		target <= SHL_SCENE_EDITOR_TARGET_SLOT2)
 	{
-		const float slotOffset = 16.0f + ((float)target * 8.0f);
+		const int slot = target - SHL_SCENE_EDITOR_TARGET_SLOT0;
 
-		origin = SHL_SceneEditorForwardRightOffset(
-			sceneOrigin,
-			sceneYaw,
-			0.0f,
-			slotOffset,
-			16.0f);
+		CBaseEntity* pSlotMonster =
+			SHL_GetPlayerSceneSlotMonster(pPlayer, slot);
 
-		yaw = sceneYaw;
+		if (pSlotMonster == nullptr)
+			return false;
+
+		Vector localPivot = g_vecZero;
+		localPivot.x = 32.0f;
+		localPivot.y = 0.0f;
+		localPivot.z = 32.0f;
+
+		Vector rotatedPivot =
+			SHL_SceneEditorRotateLocalPivot(
+				-pSlotMonster->pev->angles.x,
+				pSlotMonster->pev->angles.y,
+				localPivot);
+
+		origin = pSlotMonster->pev->origin + rotatedPivot;
+		yaw = pSlotMonster->pev->angles.y;
 		return true;
 	}
 

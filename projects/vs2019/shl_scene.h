@@ -57,6 +57,14 @@ bool SHL_IsMonsterRegrabBlocked(CBaseEntity* pMonster);
 bool SHL_IsMonsterActionLocked(CBaseEntity* pMonster);
 bool SHL_IsMonsterGrabBlocked(CBaseEntity* pMonster);
 
+bool SHL_TryAddMonsterToPlayerSceneSlot(
+	edict_t* pPlayer,
+	CBaseMonster* pMonster,
+	int slot);
+
+CBaseEntity* SHL_GetPlayerSceneSlotMonster(edict_t* pPlayer, int slot);
+int SHL_GetPlayerSceneUsedMonsterSlots(edict_t* pPlayer);
+
 CBaseEntity* SHL_GetPlayerSceneOwner(edict_t* pPlayer);
 
 bool SHL_AddSceneEscapeMash(edict_t* pPlayer);

@@ -865,6 +865,7 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 	{
 		SHL_ClientSceneEditorMove(cmd);
 		SHL_ClientSceneEditorMouse(cmd);
+		SHL_ClientSceneEditorButtons(cmd);
 	}
 
 	if (g_SHLClientInputLocked)

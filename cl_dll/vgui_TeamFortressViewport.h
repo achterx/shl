@@ -1731,3 +1731,6 @@ public:
 		FillRGBA(x, iYPos + 5, HealthWidth / 10, gHUD.m_iFontHeight, 255, 160, 0, a);
 	}
 };
+
+void SHL_VGuiSetEditorCursorVisible(bool visible);
+void SHL_VGuiGetEditorCursorPos(int& x, int& y);

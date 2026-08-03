@@ -5,6 +5,7 @@
 #include "ref_params.h"
 #include <stdio.h>
 #include <math.h>
+#include "vgui_TeamFortressViewport.h"
 
 #include "../projects/vs2019/shl_client_scene_editor.h"
 
@@ -49,10 +50,12 @@ static void SHL_ClientSceneEditorSetCursorEnabled(bool enabled)
 	g_bSHLClientSceneEditorDragging = false;
 	g_bSHLClientSceneEditorRightWasDown = false;
 
+	SHL_VGuiSetEditorCursorVisible(enabled);
+
 	gEngfuncs.Con_Printf(
 		enabled
-			? "SHL Scene Editor: cursor drag mode enabled\n"
-			: "SHL Scene Editor: cursor drag mode disabled\n");
+			? "SHL Scene Editor: OS cursor enabled\n"
+			: "SHL Scene Editor: OS cursor disabled\n");
 }
 
 bool SHL_ClientSceneEditorCursorEnabled()
@@ -103,8 +106,7 @@ void SHL_ClientSceneEditorMouse(usercmd_s* cmd)
 #define IN_ATTACK (1 << 0)
 #endif
 
-	// Old drag mode: mouse-look delta mode.
-	// Only used when OS cursor mode is OFF.
+	// Mouse-look drag mode.
 	if (!g_bSHLClientSceneEditorCursorEnabled)
 	{
 		static bool s_wasDragging = false;
@@ -168,67 +170,48 @@ void SHL_ClientSceneEditorMouse(usercmd_s* cmd)
 		return;
 	}
 
-		// OS cursor position is not available in this client SDK.
-	// Fall back to locked view-angle drag mode even when cursor mode is on.
-	static bool s_cursorWasDragging = false;
-	static float s_cursorLockedAngles[3] = {0.0f, 0.0f, 0.0f};
+	// Real VGUI cursor mode.
+	SHL_VGuiSetEditorCursorVisible(true);
 
-	float currentAngles[3];
-	currentAngles[0] = cmd->viewangles[0];
-	currentAngles[1] = cmd->viewangles[1];
-	currentAngles[2] = cmd->viewangles[2];
+	int mx = 0;
+	int my = 0;
+
+	SHL_VGuiGetEditorCursorPos(mx, my);
+
+	if (!g_bSHLClientSceneEditorHasMouse)
+	{
+		g_iSHLClientSceneEditorLastMouseX = mx;
+		g_iSHLClientSceneEditorLastMouseY = my;
+		g_bSHLClientSceneEditorHasMouse = true;
+		return;
+	}
+
+	const int dx = mx - g_iSHLClientSceneEditorLastMouseX;
+	const int dy = my - g_iSHLClientSceneEditorLastMouseY;
+
+	g_iSHLClientSceneEditorLastMouseX = mx;
+	g_iSHLClientSceneEditorLastMouseY = my;
 
 	if (!(cmd->buttons & IN_ATTACK))
 	{
-		s_cursorWasDragging = false;
-
-		s_cursorLockedAngles[0] = currentAngles[0];
-		s_cursorLockedAngles[1] = currentAngles[1];
-		s_cursorLockedAngles[2] = currentAngles[2];
-
+		g_bSHLClientSceneEditorDragging = false;
 		return;
 	}
 
-	if (!s_cursorWasDragging)
-	{
-		s_cursorWasDragging = true;
+	g_bSHLClientSceneEditorDragging = true;
 
-		s_cursorLockedAngles[0] = currentAngles[0];
-		s_cursorLockedAngles[1] = currentAngles[1];
-		s_cursorLockedAngles[2] = currentAngles[2];
-
+	if (dx == 0 && dy == 0)
 		return;
-	}
 
-	float dx = currentAngles[YAW] - s_cursorLockedAngles[YAW];
-	float dy = currentAngles[PITCH] - s_cursorLockedAngles[PITCH];
+	char command[128];
 
-	while (dx > 180.0f)
-		dx -= 360.0f;
+	sprintf(
+		command,
+		"shl_sceneedit_mousedrag %d %d\n",
+		dx,
+		dy);
 
-	while (dx < -180.0f)
-		dx += 360.0f;
-
-	if (!(dx > -0.001f && dx < 0.001f &&
-			dy > -0.001f && dy < 0.001f))
-	{
-		char command[128];
-
-		sprintf(
-			command,
-			"shl_sceneedit_mousedrag %.3f %.3f\n",
-			dx,
-			dy);
-
-		gEngfuncs.pfnServerCmd(command);
-	}
-
-	cmd->viewangles[0] = s_cursorLockedAngles[0];
-	cmd->viewangles[1] = s_cursorLockedAngles[1];
-	cmd->viewangles[2] = s_cursorLockedAngles[2];
-
-	gEngfuncs.SetViewAngles(s_cursorLockedAngles);
-
+	gEngfuncs.pfnServerCmd(command);
 }
 
 void SHL_ClientSceneEditorButtons(usercmd_s* cmd)

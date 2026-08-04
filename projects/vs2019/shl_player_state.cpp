@@ -265,8 +265,10 @@ void SHL_FinishPlayerClimax(edict_t* pEntity)
 	if (pPlayer->m_flSHLStimulation < 0.0f)
 		pPlayer->m_flSHLStimulation = 0.0f;
 
-	if (pPlayer->m_flSHLStimulation > SHL_PlayerStimMax())
-		pPlayer->m_flSHLStimulation = SHL_PlayerStimMax();
+	if (pPlayer->m_flSHLStimulation >= SHL_PlayerStimMax())
+	{
+		pPlayer->m_flSHLStimulation = SHL_PlayerStimMax() * 0.25f;
+	}
 
 	// Active scene owns the post-climax state.
 	// Do not switch to STIMULATED/NORMAL here or SHL_SceneThink will clear the scene as stale.

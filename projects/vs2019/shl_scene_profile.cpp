@@ -17,8 +17,9 @@ static const shl_scene_profile_t g_SHLSceneProfileNone =
 		false,
 		false,
 
-		0.0f,
+				0.0f,
 
+		false,
 		false,
 
 		nullptr,
@@ -68,8 +69,9 @@ static const shl_scene_profile_t g_SHLSceneProfileDebug =
 		false,
 		true,
 
-		0.0f,
+				0.0f,
 
+		false,
 		false,
 
 		nullptr,
@@ -121,6 +123,7 @@ static const shl_scene_profile_t g_SHLSceneProfileGroundedGrab =
 
 		6.0f,
 
+		true,
 		true,
 
 		"shl_grab_start",

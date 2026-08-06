@@ -17,6 +17,7 @@ struct shl_scene_profile_t
 	float stimulationPerSecond;
 
 	bool supportsSceneAnimation;
+	bool supportsNpcClimax;
 
 	const char* playerStartSequence;
 	const char* playerLoopSequence;

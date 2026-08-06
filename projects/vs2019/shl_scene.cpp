@@ -24,6 +24,9 @@
 #define SHL_SCENE_MONSTER_PIVOT_FORWARD 12.0f
 #define SHL_SCENE_MONSTER_PIVOT_RIGHT 0.0f
 #define SHL_SCENE_MONSTER_PIVOT_Z 32.0f
+#define SHL_SCENE_AUTOJOIN_RADIUS 192.0f
+#define SHL_SCENE_AUTOJOIN_INTERVAL 0.50f
+#define SHL_SCENE_AUTOJOIN_START_DELAY 0.75f
 
 static bool SHL_GetSceneSlotAnimVariation(
 	int index,
@@ -52,8 +55,16 @@ static bool SHL_IsSequenceNearEnd(
 	const char* pszSequenceName,
 	float nearEndFrame);
 
+static void SHL_StartSceneSlotNpcClimax(int index, int slot);
+static void SHL_ThinkSceneSlotNpcClimaxFlow(edict_t* pPlayer, int index);
+static void SHL_DetachSceneMonsterSlotToRecovery(
+	int index,
+	int slot,
+	bool escapeKnockdown);
+
 static void SHL_PlaySceneMonsterSlotLoops(int index);
 static void SHL_ThinkSceneSlotLoopTransitions(int index);
+static void SHL_ThinkAutoJoinScene(edict_t* pPlayer, int index);
 
 static void SHL_PlaySceneMonsterSlotPlayerClimax(int index);
 static void SHL_PlaySceneMonsterSlotNpcClimax(int index);
@@ -90,9 +101,13 @@ struct shl_scene_slot_t
 	bool pendingLoopAfterPlayerClimax;
 	float returnToLoopTime;
 
-	float npcEndurance;
+		float npcEndurance;
 	bool npcClimaxStarted;
 	float npcClimaxStartTime;
+
+	float slotNpcEndurance[SHL_MONSTER_SCENE_MAX_SLOTS];
+	bool slotNpcClimaxStarted[SHL_MONSTER_SCENE_MAX_SLOTS];
+	float slotNpcClimaxStartTime[SHL_MONSTER_SCENE_MAX_SLOTS];
 
 	float escapeProgress;
 	float lastEscapeMashTime;
@@ -111,6 +126,7 @@ struct shl_scene_slot_t
 
 	float slotJoinStartTime[SHL_MONSTER_SCENE_MAX_SLOTS];
 	bool slotLoopStarted[SHL_MONSTER_SCENE_MAX_SLOTS];
+	float nextAutoJoinThinkTime;
 };
 
 struct shl_monster_scene_recovery_t
@@ -145,6 +161,7 @@ struct shl_monster_scene_recovery_t
 
 static shl_scene_slot_t g_SHLSceneSlots[SHL_MAX_SCENE_PLAYERS];
 static shl_monster_scene_recovery_t g_SHLMonsterSceneRecovery[SHL_MAX_MONSTER_SCENE_RECOVERY];
+static bool SHL_IsSceneSlotInIndividualNpcClimax(int index, int slot);
 
 static float g_SHLGroundedEscapeProgress[SHL_MAX_SCENE_PLAYERS];
 static float g_SHLGroundedEscapeLastMashTime[SHL_MAX_SCENE_PLAYERS];
@@ -792,6 +809,9 @@ static void SHL_PlaySceneMonsterSlotLoops(int index)
 		if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
 			continue;
 
+		if (SHL_IsSceneSlotInIndividualNpcClimax(index, slot))
+			continue;
+
 		shl_monster_scene_slot_anim_variation_t slotAnim;
 
 		if (!SHL_GetSceneSlotAnimVariation(index, slot, slotAnim))
@@ -818,6 +838,9 @@ static void SHL_PlaySceneMonsterSlotPlayerClimax(int index)
 		if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
 			continue;
 
+		if (SHL_IsSceneSlotInIndividualNpcClimax(index, slot))
+			continue;
+
 		shl_monster_scene_slot_anim_variation_t slotAnim;
 
 		if (!SHL_GetSceneSlotAnimVariation(index, slot, slotAnim))
@@ -839,6 +862,9 @@ static void SHL_PlaySceneMonsterSlotNpcClimax(int index)
 	for (int slot = 0; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
 	{
 		if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+			continue;
+
+		if (SHL_IsSceneSlotInIndividualNpcClimax(index, slot))
 			continue;
 
 		shl_monster_scene_slot_anim_variation_t slotAnim;
@@ -898,6 +924,9 @@ static bool SHL_IsAnySceneMonsterSlotClimaxNearEnd(int index, bool npcClimax)
 
 	for (int slot = 0; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
 	{
+		if (SHL_IsSceneSlotInIndividualNpcClimax(index, slot))
+			continue;
+
 		CBaseEntity* pSlotEntity =
 			(CBaseEntity*)g_SHLSceneSlots[index].hSlotMonsters[slot];
 
@@ -955,6 +984,9 @@ static void SHL_ThinkSceneSlotLoopTransitions(int index)
 	for (int slot = 0; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
 	{
 		if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+			continue;
+
+		if (SHL_IsSceneSlotInIndividualNpcClimax(index, slot))
 			continue;
 
 		if (g_SHLSceneSlots[index].slotLoopStarted[slot])
@@ -1977,10 +2009,15 @@ static void SHL_ClearSceneSlot(int index)
 		g_SHLSceneSlots[index].slotAnimVariation[slot] = -1;
 		g_SHLSceneSlots[index].slotJoinStartTime[slot] = 0.0f;
 		g_SHLSceneSlots[index].slotLoopStarted[slot] = false;
+
+		g_SHLSceneSlots[index].slotNpcEndurance[slot] = 0.0f;
+		g_SHLSceneSlots[index].slotNpcClimaxStarted[slot] = false;
+		g_SHLSceneSlots[index].slotNpcClimaxStartTime[slot] = 0.0f;
 	}
 
 	g_SHLSceneSlots[index].sceneOrigin = g_vecZero;
 	g_SHLSceneSlots[index].sceneYaw = 0.0f;
+	g_SHLSceneSlots[index].nextAutoJoinThinkTime = 0.0f;
 }
 
 const char* SHL_SceneTypeName(int sceneType)
@@ -2153,10 +2190,13 @@ static void SHL_FreezeSceneSlotVisuals(int index)
 			(CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
 	}
 
-	if (g_SHLSceneSlots[index].hOwnerMonster != nullptr)
+	for (int slot = 0; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
 	{
+		if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+			continue;
+
 		SHL_FreezeSceneAnimating(
-			(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster);
+			(CBaseEntity*)g_SHLSceneSlots[index].hSlotMonsters[slot]);
 	}
 }
 
@@ -2355,6 +2395,11 @@ bool SHL_TryAddMonsterToPlayerSceneSlot(
 	}
 
 	g_SHLSceneSlots[index].hSlotMonsters[slot] = pMonster;
+	g_SHLSceneSlots[index].slotNpcEndurance[slot] =
+		SHL_NormalNpcEnduranceMax();
+
+	g_SHLSceneSlots[index].slotNpcClimaxStarted[slot] = false;
+	g_SHLSceneSlots[index].slotNpcClimaxStartTime[slot] = 0.0f;
 	g_SHLSceneSlots[index].slotAnimVariation[slot] = variation;
 
 	g_SHLSceneSlots[index].slotJoinStartTime[slot] = gpGlobals->time;
@@ -2562,6 +2607,101 @@ float SHL_GetPlayerSceneEscapeProgress(edict_t* pPlayer)
 	return progress;
 }
 
+static void SHL_DetachSceneMonsterSlotToRecovery(
+	int index,
+	int slot,
+	bool escapeKnockdown)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	if (slot < 0 || slot >= SHL_MONSTER_SCENE_MAX_SLOTS)
+		return;
+
+	CBaseEntity* pMonster =
+		(CBaseEntity*)g_SHLSceneSlots[index].hSlotMonsters[slot];
+
+	if (pMonster == nullptr)
+		return;
+
+	const shl_monster_scene_profile_t* pMonsterProfile =
+		SHL_GetMonsterSceneProfile(
+			pMonster,
+			g_SHLSceneSlots[index].sceneType);
+
+	const char* pszHoldSequence = nullptr;
+	const char* pszKnockdownSequence = nullptr;
+	const char* pszGetupSequence = nullptr;
+
+	float freezeDuration = SHL_NormalNpcRecoveryDuration();
+	float knockdownDuration = 0.0f;
+	float getupDuration = 0.0f;
+
+	if (pMonsterProfile != nullptr)
+	{
+		shl_monster_scene_slot_anim_variation_t slotAnim;
+
+		if (SHL_GetSceneSlotAnimVariation(index, slot, slotAnim))
+		{
+			pszHoldSequence = slotAnim.npcClimaxSequence;
+		}
+
+		if (pszHoldSequence == nullptr || pszHoldSequence[0] == '\0')
+			pszHoldSequence = pMonsterProfile->monsterNpcClimaxSequence;
+
+		pszGetupSequence = pMonsterProfile->monsterRecoveryGetupSequence;
+		getupDuration = pMonsterProfile->monsterRecoveryGetupDuration;
+
+		if (escapeKnockdown)
+		{
+			pszKnockdownSequence =
+				pMonsterProfile->monsterEscapeKnockdownSequence;
+
+			knockdownDuration =
+				pMonsterProfile->monsterEscapeKnockdownDuration;
+
+			if (pszKnockdownSequence != nullptr &&
+				pszKnockdownSequence[0] != '\0' &&
+				knockdownDuration > 0.0f)
+			{
+				freezeDuration = 0.0f;
+			}
+		}
+	}
+
+	SHL_StartMonsterSceneRecoveryEx(
+		pMonster,
+		pszHoldSequence,
+		freezeDuration,
+		pszKnockdownSequence,
+		knockdownDuration,
+		pszGetupSequence,
+		getupDuration);
+
+	SHL_SetMonsterRegrabCooldown(
+		pMonster,
+		SHL_NormalNpcRecoveryDuration() + SHL_NormalRegrabCooldown());
+
+	g_SHLSceneSlots[index].hSlotMonsters[slot] = nullptr;
+	g_SHLSceneSlots[index].slotAnimVariation[slot] = -1;
+	g_SHLSceneSlots[index].slotJoinStartTime[slot] = 0.0f;
+	g_SHLSceneSlots[index].slotLoopStarted[slot] = false;
+
+	g_SHLSceneSlots[index].slotNpcEndurance[slot] = 0.0f;
+	g_SHLSceneSlots[index].slotNpcClimaxStarted[slot] = false;
+	g_SHLSceneSlots[index].slotNpcClimaxStartTime[slot] = 0.0f;
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: detached scene slot=%d to recovery escape=%d entity=%d\n",
+			slot,
+			escapeKnockdown ? 1 : 0,
+			ENTINDEX(pMonster->edict()));
+	}
+}
+
 bool SHL_AddSceneEscapeMash(edict_t* pPlayer)
 {
 	const int index = SHL_GetSceneIndex(pPlayer);
@@ -2671,6 +2811,17 @@ bool SHL_AddSceneEscapeMash(edict_t* pPlayer)
 				SHL_NormalEscapeRecoveryDuration() + SHL_NormalRegrabCooldown());
 		}
 
+		for (int slot = 1; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
+		{
+			if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+				continue;
+
+			SHL_DetachSceneMonsterSlotToRecovery(
+				index,
+				slot,
+				true);
+		}
+
 		SHL_SendEscapeBar(pPlayer, false, 0.0f);
 		SHL_EndPlayerScene(pPlayer, SHL_SCENE_END_FORCED);
 		return true;
@@ -2734,9 +2885,16 @@ static void SHL_StartSceneSlot(edict_t* pPlayer, int sceneType, CBaseMonster* pO
 	}
 
 	g_SHLSceneSlots[index].hSlotMonsters[0] = pOwnerMonster;
+	g_SHLSceneSlots[index].slotNpcEndurance[0] =
+		SHL_NormalNpcEnduranceMax();
+
+	g_SHLSceneSlots[index].slotNpcClimaxStarted[0] = false;
+	g_SHLSceneSlots[index].slotNpcClimaxStartTime[0] = 0.0f;
 	g_SHLSceneSlots[index].slotAnimVariation[0] = 0;
 	g_SHLSceneSlots[index].slotJoinStartTime[0] = gpGlobals->time;
 	g_SHLSceneSlots[index].slotLoopStarted[0] = false;
+	g_SHLSceneSlots[index].nextAutoJoinThinkTime =
+		gpGlobals->time + SHL_SCENE_AUTOJOIN_START_DELAY;
 
 	if (pOwnerMonster != nullptr)
 	{
@@ -3132,8 +3290,13 @@ static void SHL_StartSceneClimaxAnimation(edict_t* pPlayer, int index)
 	g_SHLSceneSlots[index].climaxAnimationStarted = true;
 	g_SHLSceneSlots[index].climaxStartTime = gpGlobals->time;
 	g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax = true;
+	float climaxDuration = SHL_PlayerClimaxDuration();
+
+	if (climaxDuration <= 0.0f)
+		climaxDuration = 2.0f;
+
 	g_SHLSceneSlots[index].returnToLoopTime =
-		gpGlobals->time + pProfile->postClimaxLoopDelay;
+		gpGlobals->time + climaxDuration + pProfile->postClimaxLoopDelay;
 
 	SHL_ResetSceneSlotLoopsForReturn(
 		index,
@@ -3258,23 +3421,6 @@ static void SHL_HoldSceneClimaxAnimation(edict_t* pPlayer, int index)
 	const bool npcClimax =
 		g_SHLSceneSlots[index].npcClimaxStarted ? true : false;
 
-	bool climaxNearEnd =
-		SHL_IsAnySceneMonsterSlotClimaxNearEnd(index, npcClimax);
-
-	if (!climaxNearEnd && g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
-	{
-		CBaseAnimating* pPlayerSceneActor =
-			(CBaseAnimating*)((CBaseEntity*)g_SHLSceneSlots[index].hPlayerSceneActor);
-
-		if (SHL_IsSequenceNearEnd(
-				pPlayerSceneActor,
-				pProfile->playerClimaxSequence,
-				248.0f))
-		{
-			climaxNearEnd = true;
-		}
-	}
-
 	if (g_SHLSceneSlots[index].npcClimaxStarted)
 	{
 		if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
@@ -3292,7 +3438,9 @@ static void SHL_HoldSceneClimaxAnimation(edict_t* pPlayer, int index)
 		return;
 	}
 
-	if (climaxNearEnd)
+	// Player climax must not return to loop until the actual climax lock delay expires.
+	// Sequence near-end can be true too early on the first few frames after sequence start.
+	if (gpGlobals->time >= g_SHLSceneSlots[index].returnToLoopTime)
 	{
 		if (g_SHLSceneSlots[index].hPlayerSceneActor != nullptr)
 		{
@@ -3313,7 +3461,7 @@ static void SHL_HoldSceneClimaxAnimation(edict_t* pPlayer, int index)
 		{
 			ALERT(
 				at_console,
-				"SHL: player climax animation near end, visually returning to slot loops\n");
+				"SHL: player climax visual delay finished, returning to slot loops\n");
 		}
 
 		return;
@@ -3332,6 +3480,140 @@ static void SHL_HoldSceneClimaxAnimation(edict_t* pPlayer, int index)
 	}
 
 	SHL_HoldSceneMonsterSlotClimax(index, false);
+}	
+
+static void SHL_StartSceneSlotNpcClimax(int index, int slot)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	if (slot <= 0 || slot >= SHL_MONSTER_SCENE_MAX_SLOTS)
+		return;
+
+	if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+		return;
+
+	if (g_SHLSceneSlots[index].slotNpcClimaxStarted[slot])
+		return;
+
+	shl_monster_scene_slot_anim_variation_t slotAnim;
+
+	if (!SHL_GetSceneSlotAnimVariation(index, slot, slotAnim))
+		return;
+
+	if (slotAnim.npcClimaxSequence == nullptr ||
+		slotAnim.npcClimaxSequence[0] == '\0')
+		return;
+
+	g_SHLSceneSlots[index].slotNpcClimaxStarted[slot] = true;
+	g_SHLSceneSlots[index].slotNpcClimaxStartTime[slot] = gpGlobals->time;
+	g_SHLSceneSlots[index].slotLoopStarted[slot] = false;
+
+	SHL_PlaySceneSlotSequence(
+		index,
+		slot,
+		slotAnim.npcClimaxSequence,
+		"scene slot individual npc climax");
+
+	if (SHL_DebugEnabled())
+	{
+		ALERT(
+			at_console,
+			"SHL: scene slot individual npc climax started slot=%d\n",
+			slot);
+	}
+}
+
+static void SHL_ThinkSceneSlotNpcClimaxFlow(edict_t* pPlayer, int index)
+{
+	if (pPlayer == nullptr)
+		return;
+
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	if (!g_SHLSceneSlots[index].active)
+		return;
+
+	const shl_scene_profile_t* pProfile =
+		SHL_GetSceneProfile(g_SHLSceneSlots[index].sceneType);
+
+	if (pProfile == nullptr)
+		return;
+
+	if (!pProfile->supportsNpcClimax)
+		return;
+
+	if (g_SHLSceneSlots[index].climaxAnimationStarted ||
+		g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax ||
+		g_SHLSceneSlots[index].npcClimaxStarted)
+	{
+		return;
+	}
+
+	for (int slot = 1; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
+	{
+		CBaseEntity* pMonster =
+			(CBaseEntity*)g_SHLSceneSlots[index].hSlotMonsters[slot];
+
+		if (pMonster == nullptr)
+			continue;
+
+		if (g_SHLSceneSlots[index].slotNpcClimaxStarted[slot])
+		{
+			shl_monster_scene_slot_anim_variation_t slotAnim;
+
+			if (SHL_GetSceneSlotAnimVariation(index, slot, slotAnim))
+			{
+				CBaseAnimating* pAnimating = (CBaseAnimating*)pMonster;
+
+				SHL_HoldSequence(
+					pAnimating,
+					slotAnim.npcClimaxSequence,
+					"scene slot individual npc climax",
+					false);
+			}
+
+						const float elapsed =
+				gpGlobals->time -
+				g_SHLSceneSlots[index].slotNpcClimaxStartTime[slot];
+
+			if (elapsed >= SHL_NormalNpcClimaxDuration())
+			{
+				if (SHL_DebugEnabled())
+				{
+					ALERT(
+						at_console,
+						"SHL: scene slot individual npc climax finished slot=%d, releasing npc\n",
+						slot);
+				}
+
+				SHL_DetachSceneMonsterSlotToRecovery(
+					index,
+					slot,
+					false);
+			}
+
+			continue;
+		}
+
+		if (g_SHLSceneSlots[index].slotNpcEndurance[slot] <= 0.0f)
+		{
+			SHL_StartSceneSlotNpcClimax(index, slot);
+			continue;
+		}
+	}
+}
+
+static bool SHL_IsSceneSlotInIndividualNpcClimax(int index, int slot)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return false;
+
+	if (slot < 0 || slot >= SHL_MONSTER_SCENE_MAX_SLOTS)
+		return false;
+
+	return g_SHLSceneSlots[index].slotNpcClimaxStarted[slot];
 }
 
 static void SHL_ThinkNpcClimaxFlow(edict_t* pPlayer, int index)
@@ -3349,6 +3631,9 @@ static void SHL_ThinkNpcClimaxFlow(edict_t* pPlayer, int index)
 		SHL_GetSceneProfile(g_SHLSceneSlots[index].sceneType);
 
 	if (pProfile == nullptr)
+		return;
+
+	if (!pProfile->supportsNpcClimax)
 		return;
 
 	if (g_SHLSceneSlots[index].npcClimaxStarted)
@@ -3472,6 +3757,10 @@ static void SHL_ThinkPlayerClimaxReturn(edict_t* pPlayer, int index)
 		g_SHLSceneSlots[index].slotLoopStarted[slot] = true;
 		g_SHLSceneSlots[index].slotJoinStartTime[slot] = gpGlobals->time;
 	}
+
+	SHL_SetPlayerStimulation(
+		pPlayer,
+		SHL_PlayerStimMax() * 0.25f);
 
 	if (SHL_GetPlayerStateId(pPlayer) == SHL_PLAYERSTATE_CLIMAX_LOCKED)
 	{
@@ -3618,6 +3907,13 @@ static void SHL_PlaySceneLoopAnimation(edict_t* pPlayer, int index)
 
 	if (!g_SHLSceneSlots[index].active)
 		return;
+
+		if (g_SHLSceneSlots[index].climaxAnimationStarted ||
+		g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax ||
+		g_SHLSceneSlots[index].npcClimaxStarted)
+	{
+		return;
+	}
 
 	if (g_SHLSceneSlots[index].climaxAnimationStarted)
 		return;
@@ -3775,8 +4071,10 @@ static void SHL_ApplySceneProfileTick(edict_t* pPlayer, int index)
 			SHL_AddPlayerStimulation(pPlayer, amount);
 	}
 
-	if (!g_SHLSceneSlots[index].npcClimaxStarted &&
-		!g_SHLSceneSlots[index].climaxAnimationStarted)
+	if (pProfile->supportsNpcClimax &&
+		!g_SHLSceneSlots[index].npcClimaxStarted &&
+		!g_SHLSceneSlots[index].climaxAnimationStarted &&
+		!g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax)
 	{
 		const float npcDrain =
 			SHL_NormalNpcEnduranceDrainPerSecond() * deltaTime;
@@ -3787,6 +4085,20 @@ static void SHL_ApplySceneProfileTick(edict_t* pPlayer, int index)
 
 			if (g_SHLSceneSlots[index].npcEndurance < 0.0f)
 				g_SHLSceneSlots[index].npcEndurance = 0.0f;
+
+			for (int slot = 1; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
+			{
+				if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+					continue;
+
+				if (g_SHLSceneSlots[index].slotNpcClimaxStarted[slot])
+					continue;
+
+				g_SHLSceneSlots[index].slotNpcEndurance[slot] -= npcDrain;
+
+				if (g_SHLSceneSlots[index].slotNpcEndurance[slot] < 0.0f)
+					g_SHLSceneSlots[index].slotNpcEndurance[slot] = 0.0f;
+			}
 		}
 	}
 
@@ -3795,6 +4107,148 @@ static void SHL_ApplySceneProfileTick(edict_t* pPlayer, int index)
 	if (stateAfterTick == SHL_PLAYERSTATE_CLIMAX_LOCKED)
 	{
 		SHL_StartSceneClimaxAnimation(pPlayer, index);
+	}
+}
+
+static bool SHL_IsMonsterAlreadyInAnyScene(CBaseMonster* pMonster)
+{
+	if (pMonster == nullptr)
+		return true;
+
+	for (int i = 1; i < SHL_MAX_SCENE_PLAYERS; ++i)
+	{
+		if (!g_SHLSceneSlots[i].active)
+			continue;
+
+		for (int slot = 0; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
+		{
+			CBaseMonster* pSlotMonster =
+				(CBaseMonster*)((CBaseEntity*)g_SHLSceneSlots[i].hSlotMonsters[slot]);
+
+			if (pSlotMonster == pMonster)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+static int SHL_FindFreeSceneMonsterSlot(int index)
+{
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return -1;
+
+	for (int slot = 1; slot < SHL_MONSTER_SCENE_MAX_SLOTS; ++slot)
+	{
+		if (g_SHLSceneSlots[index].hSlotMonsters[slot] == nullptr)
+			return slot;
+	}
+
+	return -1;
+}
+
+static bool SHL_IsAutoJoinCandidate(
+	edict_t* pPlayer,
+	int index,
+	CBaseMonster* pMonster)
+{
+	if (pPlayer == nullptr || pMonster == nullptr)
+		return false;
+
+	if (!pMonster->IsAlive() || pMonster->pev->deadflag != DEAD_NO)
+		return false;
+
+	if (SHL_IsMonsterGrabBlocked(pMonster))
+		return false;
+
+	if (SHL_IsMonsterAlreadyInAnyScene(pMonster))
+		return false;
+
+	CBaseEntity* pOwner =
+		(CBaseEntity*)g_SHLSceneSlots[index].hOwnerMonster;
+
+	if (pOwner == pMonster)
+		return false;
+
+	if (SHL_GetMonsterSceneProfile(
+			pMonster,
+			g_SHLSceneSlots[index].sceneType) == nullptr)
+	{
+		return false;
+	}
+
+	Vector delta = pMonster->pev->origin - pPlayer->v.origin;
+	delta.z = 0.0f;
+
+	if (delta.Length() > SHL_SCENE_AUTOJOIN_RADIUS)
+		return false;
+
+	return true;
+}
+
+static void SHL_ThinkAutoJoinScene(edict_t* pPlayer, int index)
+{
+	if (pPlayer == nullptr)
+		return;
+
+	if (index <= 0 || index >= SHL_MAX_SCENE_PLAYERS)
+		return;
+
+	if (!g_SHLSceneSlots[index].active)
+		return;
+
+	if (gpGlobals->time < g_SHLSceneSlots[index].nextAutoJoinThinkTime)
+		return;
+
+	g_SHLSceneSlots[index].nextAutoJoinThinkTime =
+		gpGlobals->time + SHL_SCENE_AUTOJOIN_INTERVAL;
+
+	if (g_SHLSceneSlots[index].climaxAnimationStarted ||
+		g_SHLSceneSlots[index].pendingLoopAfterPlayerClimax ||
+		g_SHLSceneSlots[index].npcClimaxStarted)
+	{
+		return;
+	}
+
+	const int freeSlot = SHL_FindFreeSceneMonsterSlot(index);
+
+	if (freeSlot <= 0)
+		return;
+
+	CBaseEntity* pScan = nullptr;
+
+	while ((pScan = UTIL_FindEntityInSphere(
+				pScan,
+				pPlayer->v.origin,
+				SHL_SCENE_AUTOJOIN_RADIUS)) != nullptr)
+	{
+		if (pScan->IsPlayer())
+			continue;
+
+		CBaseMonster* pMonster = pScan->MyMonsterPointer();
+
+		if (pMonster == nullptr)
+			continue;
+
+		if (!SHL_IsAutoJoinCandidate(pPlayer, index, pMonster))
+			continue;
+
+		if (SHL_TryAddMonsterToPlayerSceneSlot(
+				pPlayer,
+				pMonster,
+				freeSlot))
+		{
+			if (SHL_DebugEnabled())
+			{
+				ALERT(
+					at_console,
+					"SHL: auto-joined monster slot=%d classname=%s\n",
+					freeSlot,
+					STRING(pMonster->pev->classname));
+			}
+
+			return;
+		}
 	}
 }
 
@@ -3829,6 +4283,8 @@ void SHL_SceneThink()
 		SHL_FreezeSceneSlotMonsters(i);
 
 		SHL_ThinkSceneSlotLoopTransitions(i);
+
+		SHL_ThinkAutoJoinScene(pPlayer, i);
 
 		const int state = SHL_GetPlayerStateId(pPlayer);
 
@@ -3877,6 +4333,7 @@ void SHL_SceneThink()
 		SHL_HoldSceneClimaxAnimation(pPlayer, i);
 		SHL_ApplySceneProfileTick(pPlayer, i);
 		SHL_ThinkPlayerClimaxReturn(pPlayer, i);
+		SHL_ThinkSceneSlotNpcClimaxFlow(pPlayer, i);
 		SHL_ThinkNpcClimaxFlow(pPlayer, i);
 
 		const shl_scene_profile_t* pProfile =
